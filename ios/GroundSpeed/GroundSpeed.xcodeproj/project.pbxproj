@@ -1,0 +1,421 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		375BEF9BF4368CF8A793C3DD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 960DADE27A2034655CA8E1E3 /* AppModel.swift */; };
+		53A2479A35E1C63FD9DAAEDB /* KalmanCore in Frameworks */ = {isa = PBXBuildFile; productRef = 38C46001CB9CBF7C1EA0BCAD /* KalmanCore */; };
+		5A43B325533C417BC7ECC220 /* GroundSpeedApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A849AA05067681AEFC07F75 /* GroundSpeedApp.swift */; };
+		674CE1B2231A575985D8A797 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5004DDD2942E4094A57C1F3D /* MainView.swift */; };
+		6A51FDB14C0D30CF699D7336 /* CameraFlowSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22BA0E193DF95E68C3F6B0EF /* CameraFlowSource.swift */; };
+		6BD017B71EA20B493958955B /* MotionSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C44E7C0ECDBE25B6EE88E78 /* MotionSource.swift */; };
+		851F49F853422C9F2B6100BA /* LocationSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2009FF340E29C276D2C6A0 /* LocationSource.swift */; };
+		9218B835E445838D32B2A2CF /* SpeedProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = D5A2A9987BC4C765DBE4BFAA /* SpeedProtocol */; };
+		97D92D494650F11347ED75A7 /* RunsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0D73430763CE85C00C21B27 /* RunsView.swift */; };
+		994828F74E46677D0CC569F3 /* PhoneRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 558E9D3CD87A17CC536EE0BB /* PhoneRuntime */; };
+		9F0A96BF28152E6796212CD7 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26AA3367D82580B66B4657AD /* Theme.swift */; };
+		C02695867F07BEA07939A1DD /* ConsoleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858F019397730C22D2A7DC07 /* ConsoleSheet.swift */; };
+		C9492DF37CA8C7A2A3E8D291 /* OpticalFlow in Frameworks */ = {isa = PBXBuildFile; productRef = 14D728AA65748A8B68722D18 /* OpticalFlow */; };
+		F00B417FDBFB61026D713A67 /* DepthSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C514117427DC4EC8A1D60AF6 /* DepthSource.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		22BA0E193DF95E68C3F6B0EF /* CameraFlowSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraFlowSource.swift; sourceTree = "<group>"; };
+		26AA3367D82580B66B4657AD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		5004DDD2942E4094A57C1F3D /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		6A849AA05067681AEFC07F75 /* GroundSpeedApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundSpeedApp.swift; sourceTree = "<group>"; };
+		858F019397730C22D2A7DC07 /* ConsoleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSheet.swift; sourceTree = "<group>"; };
+		867086EC743A966500ED567A /* GroundSpeed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GroundSpeed.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		88B3C3CCEB184667BC479722 /* GroundSpeedKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GroundSpeedKit; path = ../../GroundSpeedKit; sourceTree = SOURCE_ROOT; };
+		8AE68459A519C1CA9FFB3284 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8C44E7C0ECDBE25B6EE88E78 /* MotionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSource.swift; sourceTree = "<group>"; };
+		960DADE27A2034655CA8E1E3 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		C514117427DC4EC8A1D60AF6 /* DepthSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthSource.swift; sourceTree = "<group>"; };
+		E0D73430763CE85C00C21B27 /* RunsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunsView.swift; sourceTree = "<group>"; };
+		EC2009FF340E29C276D2C6A0 /* LocationSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationSource.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0518923A3CCEA5615933F277 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				994828F74E46677D0CC569F3 /* PhoneRuntime in Frameworks */,
+				53A2479A35E1C63FD9DAAEDB /* KalmanCore in Frameworks */,
+				C9492DF37CA8C7A2A3E8D291 /* OpticalFlow in Frameworks */,
+				9218B835E445838D32B2A2CF /* SpeedProtocol in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4EA7640613F10E12B4FF14F4 /* GroundSpeed */ = {
+			isa = PBXGroup;
+			children = (
+				960DADE27A2034655CA8E1E3 /* AppModel.swift */,
+				6A849AA05067681AEFC07F75 /* GroundSpeedApp.swift */,
+				8AE68459A519C1CA9FFB3284 /* Info.plist */,
+				26AA3367D82580B66B4657AD /* Theme.swift */,
+				A3D67FE924A62E54816B36CF /* Sensors */,
+				711919EE63532DCDE14C5031 /* Views */,
+			);
+			path = GroundSpeed;
+			sourceTree = "<group>";
+		};
+		711919EE63532DCDE14C5031 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				858F019397730C22D2A7DC07 /* ConsoleSheet.swift */,
+				5004DDD2942E4094A57C1F3D /* MainView.swift */,
+				E0D73430763CE85C00C21B27 /* RunsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A3D67FE924A62E54816B36CF /* Sensors */ = {
+			isa = PBXGroup;
+			children = (
+				22BA0E193DF95E68C3F6B0EF /* CameraFlowSource.swift */,
+				C514117427DC4EC8A1D60AF6 /* DepthSource.swift */,
+				EC2009FF340E29C276D2C6A0 /* LocationSource.swift */,
+				8C44E7C0ECDBE25B6EE88E78 /* MotionSource.swift */,
+			);
+			path = Sensors;
+			sourceTree = "<group>";
+		};
+		B019DED0A017ADE1BC3659B8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				867086EC743A966500ED567A /* GroundSpeed.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E11D569DF1BB74B812F15EED = {
+			isa = PBXGroup;
+			children = (
+				4EA7640613F10E12B4FF14F4 /* GroundSpeed */,
+				F28478D1D7E138DFD45FE422 /* Packages */,
+				B019DED0A017ADE1BC3659B8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F28478D1D7E138DFD45FE422 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				88B3C3CCEB184667BC479722 /* GroundSpeedKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5E9B1C2C0D0796EA2498BC6B /* GroundSpeed */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3514596C517CB74F12FD21A6 /* Build configuration list for PBXNativeTarget "GroundSpeed" */;
+			buildPhases = (
+				00DF10054676F35BAB172BD7 /* Sources */,
+				0518923A3CCEA5615933F277 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GroundSpeed;
+			packageProductDependencies = (
+				558E9D3CD87A17CC536EE0BB /* PhoneRuntime */,
+				38C46001CB9CBF7C1EA0BCAD /* KalmanCore */,
+				14D728AA65748A8B68722D18 /* OpticalFlow */,
+				D5A2A9987BC4C765DBE4BFAA /* SpeedProtocol */,
+			);
+			productName = GroundSpeed;
+			productReference = 867086EC743A966500ED567A /* GroundSpeed.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		77CEF83CAE89097002662BEA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					5E9B1C2C0D0796EA2498BC6B = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = CAF1CD6C0A828156C730B171 /* Build configuration list for PBXProject "GroundSpeed" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E11D569DF1BB74B812F15EED;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1B32AAB8B9C213EC0DD6EF58 /* XCLocalSwiftPackageReference "../../GroundSpeedKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B019DED0A017ADE1BC3659B8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5E9B1C2C0D0796EA2498BC6B /* GroundSpeed */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		00DF10054676F35BAB172BD7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				375BEF9BF4368CF8A793C3DD /* AppModel.swift in Sources */,
+				6A51FDB14C0D30CF699D7336 /* CameraFlowSource.swift in Sources */,
+				C02695867F07BEA07939A1DD /* ConsoleSheet.swift in Sources */,
+				F00B417FDBFB61026D713A67 /* DepthSource.swift in Sources */,
+				5A43B325533C417BC7ECC220 /* GroundSpeedApp.swift in Sources */,
+				851F49F853422C9F2B6100BA /* LocationSource.swift in Sources */,
+				674CE1B2231A575985D8A797 /* MainView.swift in Sources */,
+				6BD017B71EA20B493958955B /* MotionSource.swift in Sources */,
+				97D92D494650F11347ED75A7 /* RunsView.swift in Sources */,
+				9F0A96BF28152E6796212CD7 /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4E82616E4B65F1D0DF403C87 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8CF2468EDE5965E28BC0B5A4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D7CDD4A113969B101AD7E675 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D9324GTY2Z;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = GroundSpeed/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mhacks26.groundspeed;
+				PRODUCT_NAME = GroundSpeed;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E4A99103520012730E9808B0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D9324GTY2Z;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = GroundSpeed/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mhacks26.groundspeed;
+				PRODUCT_NAME = GroundSpeed;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3514596C517CB74F12FD21A6 /* Build configuration list for PBXNativeTarget "GroundSpeed" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D7CDD4A113969B101AD7E675 /* Debug */,
+				E4A99103520012730E9808B0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CAF1CD6C0A828156C730B171 /* Build configuration list for PBXProject "GroundSpeed" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E82616E4B65F1D0DF403C87 /* Debug */,
+				8CF2468EDE5965E28BC0B5A4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1B32AAB8B9C213EC0DD6EF58 /* XCLocalSwiftPackageReference "../../GroundSpeedKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../GroundSpeedKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		14D728AA65748A8B68722D18 /* OpticalFlow */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpticalFlow;
+		};
+		38C46001CB9CBF7C1EA0BCAD /* KalmanCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KalmanCore;
+		};
+		558E9D3CD87A17CC536EE0BB /* PhoneRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PhoneRuntime;
+		};
+		D5A2A9987BC4C765DBE4BFAA /* SpeedProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SpeedProtocol;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 77CEF83CAE89097002662BEA /* Project object */;
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ground Speed</title>
+<script>try { const t = localStorage.getItem("gs-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="nosignal">
+<header class="top fade" style="--i:0">
+  <div class="title">
+    <h1>Ground Speed</h1>
+    <span class="sub">optical flow · imu · gnss — kalman estimate</span>
+  </div>
+  <div class="runstate" id="runstate"><span class="rdot"></span><span id="runtext">Offline</span> <span class="num" id="runclock"></span></div>
+  <div class="toprt">
+    <button class="link" id="btn-theme" title="Toggle light / dark">Dark</button>
+    <button class="link" id="btn-fs" title="Fullscreen (F)">Fullscreen</button>
+  </div>
+</header>
+
+<main>
+  <section class="readout fade" style="--i:1">
+    <div class="hero">
+      <div class="cap">Distance</div>
+      <div class="distance num"><span id="dist">0.00</span><span class="unit">m</span></div>
+      <div class="targetline">
+        <span class="cap">of</span>
+        <input id="target" class="num" type="number" step="0.01" min="0" value="10.00" aria-label="target distance">
+        <span class="cap">m target</span>
+        <span class="gauge"><span class="fill" id="gauge-fill"></span></span>
+      </div>
+      <div class="result num" id="result"></div>
+    </div>
+    <div class="vels">
+      <div class="vrow">
+        <div class="cap">v<sub>x</sub> forward</div>
+        <div class="vval num"><span id="vx">0.00</span><span class="pm">±<span id="svx">0.00</span></span><span class="unit">m/s</span></div>
+      </div>
+      <div class="vrow minor">
+        <div class="cap">v<sub>y</sub> lateral</div>
+        <div class="vval num"><span id="vy">0.00</span><span class="pm">±<span id="svy">0.00</span></span><span class="unit">m/s</span></div>
+      </div>
+      <div class="note">± is 2σ of the filter estimate</div>
+    </div>
+  </section>
+
+  <section class="plot fade" style="--i:2">
+    <div class="plothead">
+      <span class="cap">Velocity, last 20 s</span>
+      <span class="flowmsg" id="flowmsg">flow lost — dead-reckoning on IMU</span>
+      <span class="legend"><i class="k vx"></i>v<sub>x</sub> ± 2σ <i class="k vy"></i>v<sub>y</sub> <i class="k lost"></i>flow lost</span>
+    </div>
+    <div class="screen">
+      <canvas id="plot"></canvas>
+      <div class="nosig" id="nosig"><em>No signal</em><span id="nosig-sub">waiting for telemetry on UDP :9000</span></div>
+    </div>
+  </section>
+
+  <section class="statusbar fade" style="--i:3">
+    <div class="sensors">
+      <span class="s" id="L-IMU"><i></i>IMU</span>
+      <span class="s" id="L-FLOW"><i></i>Flow<em id="gated"></em></span>
+      <span class="s" id="L-GNSS"><i></i>GNSS</span>
+      <span class="s" id="L-LIDAR"><i></i>LiDAR</span>
+      <span class="s" id="L-ZUPT"><i></i>ZUPT</span>
+      <span class="s" id="L-REC"><i></i>Rec</span>
+      <span class="sflag" id="sflag"></span>
+    </div>
+    <div class="linkline num" id="linkline"><i class="ldot" id="ldot"></i><span id="linktext">no telemetry</span></div>
+  </section>
+
+  <section class="controls fade" style="--i:4">
+    <div class="buttons">
+      <button class="tb primary" id="btn-start">Start</button>
+      <button class="tb" id="btn-stop">Stop</button>
+      <button class="tb" id="btn-mark" title="Mark (M)">Mark</button>
+      <button class="tb" id="btn-cal">Calibrate</button>
+      <button class="tb" id="btn-reset">Reset</button>
+      <span class="torch"><span class="cap">Torch</span><input id="torch-slider" type="range" min="0" max="100" step="5" value="0"><span id="torch-val" class="num">0%</span></span>
+    </div>
+    <div class="aux num" id="aux">–</div>
+  </section>
+
+  <section class="drawers fade" style="--i:5">
+    <details id="setup">
+      <summary>Setup</summary>
+      <div class="drawer">
+        <label><span class="cap">Run label</span><input id="label" type="text" placeholder="optional, e.g. carpet_03" spellcheck="false"></label>
+        <label><span class="cap">Phone IP</span><input id="phone-input" type="text" placeholder="auto" spellcheck="false"><button class="tb" id="btn-phone">Set</button></label>
+        <div class="row"><button class="tb" id="btn-ping">Ping</button><span class="cmdstate num" id="cmd-state"></span></div>
+      </div>
+    </details>
+    <details id="logbox">
+      <summary>Command log <span class="num" id="logcount"></span></summary>
+      <ol id="cmdlog" class="num"></ol>
+    </details>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

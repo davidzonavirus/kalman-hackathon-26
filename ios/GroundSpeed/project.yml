@@ -1,0 +1,66 @@
+# XcodeGen spec — run `xcodegen generate` in this folder to (re)create GroundSpeed.xcodeproj.
+name: GroundSpeed
+options:
+  bundleIdPrefix: com.mhacks26
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  GroundSpeedKit:
+    path: ../../GroundSpeedKit
+targets:
+  GroundSpeed:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: GroundSpeed
+    dependencies:
+      - package: GroundSpeedKit
+        product: PhoneRuntime
+      - package: GroundSpeedKit
+        product: KalmanCore
+      - package: GroundSpeedKit
+        product: OpticalFlow
+      - package: GroundSpeedKit
+        product: SpeedProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mhacks26.groundspeed
+        PRODUCT_NAME: GroundSpeed
+        # Set your Apple ID team here (or in Xcode: target > Signing & Capabilities > Team).
+        DEVELOPMENT_TEAM: D9324GTY2Z  # David Nguyen (Personal Team)
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_PREVIEWS: YES
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+    info:
+      path: GroundSpeed/Info.plist
+      properties:
+        CFBundleDisplayName: GroundSpeed
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        UIRequiredDeviceCapabilities:
+          - arm64
+          - gyroscope
+          - accelerometer
+          - camera-flash
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        NSCameraUsageDescription: "The back camera watches the floor to measure ground speed (optical flow). Frames are processed on the phone and never stored."
+        NSMotionUsageDescription: "The accelerometer and gyroscope are fused with optical flow to estimate cart speed."
+        NSLocationWhenInUseUsageDescription: "GNSS speed is used as a slow correction for the speed estimate and logged with each run."
+        NSLocalNetworkUsageDescription: "Streams live speed telemetry to the dashboard laptop and accepts start/stop commands from it."
+        NSBonjourServices:
+          - _groundspeed._tcp
