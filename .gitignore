@@ -8,3 +8,5 @@ dashboard/logs/
 .DS_Store
 .build-ios/
 device_data/
+hardware/_refs/
+hardware/spice/_t/

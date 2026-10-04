@@ -1,0 +1,41 @@
+Importer Log Report
+Project : MR26_GSS.PrjPcb
+
+Section : Analyze Document - C:\Users\David Nguyen\Downloads\eagle\eagle\MR26.lbr
+    Analyzing data of C:\Users\David Nguyen\Downloads\eagle\eagle\MR26.lbr
+    Load settings
+    Load layers 34
+    Load library
+    Load Library library
+    Load Library ""
+    Load Packages 50
+    Load Symbols 68
+    Load DeviceSets 57
+EndSection
+
+Section : Analyze Document - C:\Users\David Nguyen\Downloads\eagle\eagle\MR26_GSS.brd
+    Analyzing data of C:\Users\David Nguyen\Downloads\eagle\eagle\MR26_GSS.brd
+    Load settings
+    Load layers 34
+    Load board
+    Load Library "MR26"
+    Load Packages 50
+    Load Symbols 68
+    Load DeviceSets 57
+EndSection
+
+Section : Analyze Document - C:\Users\David Nguyen\Downloads\eagle\eagle\MR26_GSS.sch
+    Analyzing data of C:\Users\David Nguyen\Downloads\eagle\eagle\MR26_GSS.sch
+    Load settings
+    Load layers 34
+    Load schematic
+    Load Libraries 1
+    Load Library "MR26"
+    Load Packages 50
+    Load Symbols 68
+    Load DeviceSets 57
+    Load Attributes 0
+    Load Classes 1
+    Load Parts 1020
+    Load Sheets 9
+EndSection
