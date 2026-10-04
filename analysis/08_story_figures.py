@@ -92,7 +92,13 @@ def main():
         ax.plot(mid, m, "o-", color=col, label=era)
         med[era] = dict(zip(mid.round(1).tolist(), m))
     ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("image shift between frames (full-res px)"); ax.set_ylabel("flow quality (PSR, median)")
+    from matplotlib.ticker import FixedLocator, NullFormatter, NullLocator, ScalarFormatter
+    for axis, ticks in ((ax.xaxis, [1, 2, 4, 8, 16, 32, 48]), (ax.yaxis, [30, 50, 100, 200, 400])):
+        axis.set_major_locator(FixedLocator(ticks))
+        axis.set_major_formatter(ScalarFormatter())
+        axis.set_minor_locator(NullLocator()); axis.set_minor_formatter(NullFormatter())
+    ax.set_xlim(1, 52); ax.set_ylim(25, 480)
+    ax.set_xlabel("image shift between frames (full-res px, log scale)"); ax.set_ylabel("flow quality (PSR, median, log scale)")
     ax.set_title("Within one setup, PSR falls steeply with shift/frame")
     ax.legend(fontsize=8)
     ax = axs[1]
