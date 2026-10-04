@@ -33,7 +33,7 @@ def p(x, d=1):
 TEXT = f"""
 # Open Ground Speed Sensor: team briefing and judge prep
 
-> How to read this: Part 1 explains the project from zero. Part 2 is the story of the night (what broke, why, how it was fixed). Part 3 is how accurate it really is. Part 4 is judge preparation: the pitch, the demo, the hard questions with answers, and the claims to avoid. Part 5 is a one-page cheat sheet and a glossary. Every number here comes from the re-analysis of the logged data in the repo (branch analysis/forensics-monte-carlo, file analysis/out/final_metrics.json).{" The velocity Monte Carlo numbers are from a provisional run (5,000 of 100,000 trials); the full run gave the same main result." if VDRAFT else ""}
+> How to read this: Part 1 explains the project from zero. Part 2 is the story of the night (what broke, why, how it was fixed). Part 3 is how accurate it really is. Part 4 is judge preparation: the pitch, the demo, the hard questions with answers, and the claims to avoid. Part 5 is a one-page cheat sheet and a glossary. Part 6 is the technical deep dive: sensor fusion, each sensor's limits, the Kalman filter and the Monte Carlo, with every parameter and why it was chosen. Every number here comes from the re-analysis of the logged data in the repo (branch analysis/forensics-monte-carlo, file analysis/out/final_metrics.json).{" The velocity Monte Carlo numbers are from a provisional run (5,000 of 100,000 trials); the full run gave the same main result." if VDRAFT else ""}
 
 # Part 1: What we built, from zero
 
@@ -365,6 +365,245 @@ These are places where the team's write-up says something the logged data doesn'
 """
 
 
+pv = mcv["params"]
+dvd = mcd["variance_decomposition"]
+TECH = f"""
+# Part 6: Technical deep dive
+
+> This part is for learning the system properly: how the sensors are fused, what each sensor is for and where its hardware limits are, how the Kalman filter works and why each parameter has the value it has, and how the Monte Carlo simulation was built. Every constant below is quoted from the code (GroundSpeedKit and the iOS app) or measured from the logs.
+
+## 6.1 Sensor fusion: how it actually works
+
+### The big idea
+
+No single sensor is good enough on its own:
+- the **camera** measures speed directly but only when it can see texture, and only as well as the height and focal length are known;
+- the **IMU** reacts instantly and never "loses sight", but drifts within seconds;
+- **GPS** never drifts but is slow, laggy and noisy;
+- **LiDAR** gives the height that turns camera pixels into metres, but can't run while the camera is filming at 240 fps.
+
+Fusion means letting each sensor do what it is good at and covering its weakness with another. In this system the division of labour is:
+
+| Job | Done by | Why that sensor |
+| Measure speed over ground | camera (optical flow) | direct measurement of motion, 240 times a second |
+| Convert pixels to metres | LiDAR height h (once) + focal length f | sets the scale of every measurement |
+| Fill in between camera frames and through short dropouts | IMU accelerometer (filter predict step) | 100 Hz, never blind |
+| Detect "stopped" and pin speed to zero | IMU (stillness) + camera (near-zero flow) | kills drift at every stop |
+| Remove fake motion from the phone rotating | IMU gyroscope (de-rotation) | rotation sweeps the image without the vehicle moving |
+| Correct for a tilted phone | IMU gravity vector | gives the tilt angle |
+| Slow, independent speed check | GPS | absolute, never drifts (but weak in this tuning) |
+
+### What happens to one sample, step by step
+
+1. **Everything is timestamped on one clock** (the phone's monotonic clock), then put through a 50 ms reorder buffer so samples are processed strictly in time order. At equal timestamps the order is always IMU, then camera, then GPS, then zero-velocity. Every input is rounded to exactly what gets written to the log, so replaying the log reproduces the phone's output bit-for-bit. That's why we could verify the filter offline.
+2. **IMU sample (100 Hz):** gravity is already removed by iOS; the calibrated bias (measured while still) is subtracted. The filter runs its **predict** step. The distance integrator adds the new speed. The stillness detector decides whether a zero-velocity update is due.
+3. **Camera sample (240 Hz):** the phase-correlation shift becomes a velocity using h and f. Then **de-rotation**: the average gyro rate since the previous frame, times h, is subtracted (forward speed minus h·ω_y, sideways speed plus h·ω_x). If the phone was rotating, the frame's quality is lowered (only about half of the rotation effect is removed in practice, so the leftover 0.5·h·|ω| is treated as extra noise). Then the filter runs its **update** step, weighted by PSR.
+4. **GPS fix (~1 Hz):** used as an update only if both GPS speed and the filter's speed are above 1 m/s.
+5. **Zero-velocity update:** applied after everything else at that timestamp, if the vehicle is judged still.
+
+### Who really controls the output?
+
+With the chosen numbers the filter follows the camera very closely. At typical quality it settles onto a new camera reading in about 5–20 ms:
+
+| Camera quality (PSR) | Camera noise assumed (1σ) | Filter's own uncertainty after update | Filter time constant |
+| 10 (weak) | 0.080 m/s | 0.038 m/s | ~19 ms |
+| 20 | 0.040 m/s | 0.025 m/s | ~11 ms |
+| 50 (typical car) | 0.016 m/s | 0.013 m/s | ~6 ms |
+| 100+ (good floor) | 0.008 m/s | 0.008 m/s | ~5 ms |
+
+So in practice: **the camera sets the speed, the IMU bridges the gaps** (there are 240 camera frames but only 100 IMU steps per second, plus dropped frames and pauses), and **GPS barely matters** (removing it changes the output by at most 4 mm/s). That also explains the biggest weakness: if the camera is confidently wrong (the zero lock, PSR about 13, above the cut-off of 8), nothing in the filter can overrule it.
+
+### Axes and sign conventions
+
+The vehicle frame is x forward, y left, z up. Camera axes (x right, y down in the image) are mapped to vehicle axes by a mount setting. One finding from the data: every calibration push actually moved along the phone's **−x** axis (the summed forward speed was −4.9 m). It doesn't matter for the odometer, which adds up the magnitude of speed, but the signed "net forward" field read negative on those runs.
+
+## 6.2 Each sensor: purpose and hardware limits
+
+### Camera (the primary sensor)
+
+- **Configuration:** wide camera, 1280×720 at 240 fps (120 fps if the phone gets hot), video stabilisation off, focus locked after a 1.5 s settle with the torch on, exposure capped at 1/1000 s with ISO raised to compensate (it ran at ISO 2200 at night). A 256×256 centre crop is downsampled to 128×128 for the correlator.
+- **Purpose:** measures the ground's shift between frames plus a quality score (PSR).
+- **Limit: texture and light.** A blank, shiny or dark surface gives low PSR. Frames with PSR below 8 are skipped.
+- **Limit: motion blur.** Blur in pixels ≈ speed × focal length × exposure ÷ height. At 12.5 m/s, 17 cm height and 1/1000 s that is about 65 px, and tracking fails. Shorter exposures need more light: halving it at night gave no net gain.
+- **Limit: window wrap.** The 128-pixel window (after 2× downsampling) can only see shifts up to ±64 px per frame, about 6 m/s at a 17 cm mount. Motion prediction (offsetting the window by the last motion; used above 32 px/frame in the final build) removes this limit.
+- **Limit: fixed pattern.** The sensor's own static noise always correlates perfectly at zero shift (PSR 10–25). When the real match is weak, the tracker can lock onto zero. Mitigations: coast 24 frames on the last motion, require PSR ≥ 30 to accept a big jump, and (final build, untested) require PSR ≥ 30 for a sudden exact zero after fast motion.
+- **Limit: no lens data at 240 fps.** iOS doesn't deliver per-frame intrinsics in this mode, so the focal length is computed from the field-of-view figure (73.3°) and calibrated (×1.027).
+- **Limit: height range.** Below about 20 cm the lens struggles to focus and the window covers little ground; at 79 cm the floor moves only about 1 px per frame at walking pace and readings were 7–17 % low.
+- **Limit: the iOS camera service.** Switching straight from the LiDAR's 30 fps mode to 240 fps crashed it (14 crash reports). Fix: start at 30 fps and step up; a watchdog restarts the camera after 1.5 s without frames.
+- **Limit: heat and dropped frames.** Under thermal pressure the app drops to 120 fps, which halves the speed range. Logged frame drops were about 1 % in the final car drive and about 4 % in the first.
+
+### LiDAR (sets the scale)
+
+- **Purpose:** measures camera height h before a run ("Measure h"), which converts pixels to metres. It also zeroes the IMU bias at the same still moment.
+- **How:** a separate capture session pauses the flow camera for about 1.5 s, reads 320×180 depth maps, takes the median of the centre patch of each frame, then the median across frames.
+- **Limit: can't run with the 240 fps camera.** iOS can't run both sessions at once, so height is measured once, not tracked. Changes in ride height during a run (suspension, pitch) are invisible. That is the leading suspect for the ±0.5 m/s slow error in the car.
+- **Limit: it measures along its line of sight.** On a tilted phone that is longer than the vertical height, so the reading is multiplied by cos θ from the gravity vector. Getting this wrong was the +61 % tilt bug.
+- **Limit: it isn't at the lens.** The LiDAR sits about 7.9 mm higher than the camera's optical centre, hence the −7.9 mm calibration offset (fit uncertainty about ±2.3 mm).
+- **Accepted range and checks:** 5 cm to 2 m; reading rejected if the depth isn't metric, under half the pixels are valid, or the frames disagree by more than 8 % or 1 cm. It reads unstably below about 8 cm.
+- **Repeatability:** repeated measurements at an unchanged mount scatter by about 0.6 mm (1σ), and the app stores h rounded to 1 mm. At a 19 cm mount that is already about 0.3 % in distance, which is most of the run-to-run scatter we see.
+
+### IMU: accelerometer and gyroscope (bridging, stillness, rotation, tilt)
+
+- **Configuration:** iOS Core Motion "device motion" at 100 Hz. iOS's own fusion removes gravity and provides the gravity direction. The app rotates samples into the vehicle frame and subtracts a bias measured during a 2 s still calibration (rejected if the phone moved: accel standard deviation above 0.04 m/s²).
+- **Purpose 1, prediction:** carries the speed estimate between camera frames and through dropouts.
+- **Purpose 2, stillness:** declared still when the variation of acceleration magnitude over 0.3 s is below 0.0025 (m/s²)² (a standard deviation of 0.05 m/s²) and the latest camera speed is below 0.03 m/s. A zero-velocity update follows.
+- **Purpose 3, de-rotation:** gyroscope rate × h is subtracted from the camera speed.
+- **Purpose 4, tilt:** the gravity direction gives the camera's tilt for the cos θ correction.
+- **Limit: drift.** Integrated acceleration drifts fast: with no camera the phone "drove" 15 m in 3 s while sitting still. That's why, once the camera has been gone for 2 s, any still moment forces speed to zero.
+- **Limit: noise and vibration.** At rest the accelerometer noise was about 0.046 m/s² on the cart and 0.062 m/s² in the car; the car mount saw spikes of about 3–4 g. Large jolts are why q_accel was raised.
+
+### GPS (independent but weak)
+
+- **Configuration:** Core Location "best for navigation", every fix delivered; only the speed and its reported accuracy are used (position isn't).
+- **Purpose:** an absolute speed that never drifts; used above 1 m/s.
+- **Limit: slow and late.** About 1 fix per second, trailing the camera by about 0.65 s (measured by cross-correlation in two drives).
+- **Limit: noise.** Measured jitter about 0.16 m/s, but iOS reports a 1σ "speed accuracy" of about 2.2 m/s (median while moving in the final drive). The filter uses the reported value squared as R, so GPS gets very little weight.
+- **Limit: no use indoors**, and near zero speed its direction is meaningless.
+- **Note:** GPS position accuracy (±5 m) was a red herring early on. Only speed is used.
+
+### Torch, Wi-Fi and the dashboard
+
+- **Torch:** lights the ground so short exposures are possible; at night the camera still needed ISO 2200.
+- **Wi-Fi telemetry:** 50 updates a second over UDP to the laptop (48- or 72-byte frames with a checksum), commands over TCP, Bonjour discovery. In the car up to about 2,300 packets were lost in one session. That doesn't affect accuracy because the phone records everything locally; the dashboard is display only.
+
+## 6.3 The Kalman filter in detail
+
+### State and model
+
+- **State (4 numbers):** forward speed v_x, sideways speed v_y (m/s), and accelerometer biases b_x, b_y (m/s²). Position and distance are **not** states; distance is integrated outside the filter so every filter variant shares the same odometer.
+- **Predict (every IMU sample, Δt ≈ 10 ms, clamped to 0.1 s):** v_x ← v_x + Δt·(a_x − b_x + r·v_y) and v_y ← v_y + Δt·(a_y − b_y − r·v_x), where r is the yaw rate from the gyroscope (turning swaps forward and sideways speed). Biases are assumed constant apart from a slow random walk.
+- **Uncertainty grows each predict** by Q = diag(q_accel·Δt, q_accel·Δt, q_bias·Δt, q_bias·Δt).
+- **Updates are scalar and sequential** (forward axis, then sideways). Each needs one division instead of a matrix inverse, and the covariance uses the **Joseph form** (more robust to rounding) and is forced symmetric.
+
+### Parameters and why they have these values
+
+| Parameter | Value | Meaning | Why this value |
+| q_accel | 0.1 (m/s²)²·s | how much speed can change unpredictably per second (1σ ≈ 0.32 m/s in 1 s) | raised from 0.02 after the first on-device run: cart jolts were being rejected as outliers; 0.1 halved the rejected camera frames |
+| q_bias | 1e-5 | how fast the accelerometer bias can wander (≈ 0.03 m/s² in 100 s) | bias is nearly constant over a run; small keeps the bias estimate stable |
+| r_flow_base | 1.6e-3 (m/s)² | camera noise variance at the reference quality | camera σ = 0.04 m/s at PSR 20 |
+| psr_ref | 20 | reference PSR for that noise | R scales as (20/PSR)²: double the PSR, a quarter of the variance |
+| psr_min | 8 | below this, frames are skipped, not down-weighted | the correlator's noise floor is about PSR 3–7; a covered lens reports a confident zero, so weak frames must be ignored, not merely trusted less |
+| gate | 9 | reject a camera sample if its normalised innovation squared (NIS) exceeds 9 on either axis | 9 = 3σ |
+| gate_reset_count | 12 | after 12 rejected camera samples in a row, reopen the filter's uncertainty and accept | if the filter itself diverged (e.g. after IMU-only drift), endless rejection would lock it out forever |
+| r_zupt | 1e-4 (m/s)² | zero-velocity "measurement" noise (σ 0.01 m/s) | strong pull to zero when still; never gated |
+| p0_v / p0_b | 0.25 / 0.01 | starting uncertainty: speed σ 0.5 m/s, bias σ 0.1 m/s² | wide enough to lock on quickly |
+| GPS R | speed_acc² | GPS noise from iOS's own estimate | honest, but iOS's figure is very conservative, so GPS gets little weight |
+| GPS threshold | > 1 m/s (both GPS and filter) | GPS speed is a magnitude; the update needs a direction | near zero the direction is undefined and GPS noise is relatively huge |
+
+### Rules that aren't obvious
+
+- **The gate uses the prediction from before the update,** on both axes. If either axis fails, the whole camera sample is rejected.
+- **The gate is switched off after start-up** until the first accepted measurement, so a filter started while already moving can lock on instead of rejecting everything.
+- **Lockout recovery:** on the 12th straight rejection, the cross-terms of the speed uncertainty are cleared, the speed variances are raised to at least 0.25, and the sample is accepted.
+- **The GPS update is linearised** (an "extended" Kalman update): the measurement is |v|, so the update direction is the current speed direction v/|v|.
+- **Zero-velocity updates are never gated** and always applied after everything else at that timestamp.
+
+### Design decisions and their trade-offs
+
+- **Why 4 states and not more?** Speed plus bias is the minimum that removes accelerometer drift. Scale (h, f) is not a state: without a reference that sees true speed, scale isn't observable from these sensors, and GPS is too weak to estimate it. Consequence: scale errors pass straight through. The filter's own σ (about 0.01–0.04 m/s) is far smaller than the real error (about 0.5 m/s in the car), so **the filter is overconfident about slow, systematic errors.**
+- **Why skip low-quality frames instead of down-weighting?** A covered or blank lens returns zero shift with a modest PSR; down-weighting would still pull speed toward zero.
+- **Why a 4-state coupled filter rather than two separate axes?** Turning couples the axes through the yaw rate. A simpler alternative, DecoupledKF2x2 (two independent 2-state filters treating the coupling as a known input), is also in the code and selectable, but ReferenceKF4 is the default.
+- **Why distance outside the filter?** All filter variants share one odometer, and it can include the wobble smoothing (0.5 s low-pass), the 0.05 m/s deadband and the lead compensation without touching the filter.
+- **Why deterministic replay?** Quantising inputs to the logged values and fixing the processing order means `kfreplay` (Swift) and our Python port reproduce the phone's output exactly. Every tuning change can be tested on real recorded runs before going back on the phone.
+- **What we'd change next:** add a consistency check between camera and GPS (or IMU) to detect a confidently wrong camera such as the zero lock; model camera noise as speed- and vibration-dependent; consider a scale or height state if a better reference (wheel encoder, RTK) is added.
+
+### The odometer (distance)
+
+- Integrates the magnitude of the smoothed speed by the trapezoid rule after each IMU step (Δt clamped to 0.1 s).
+- **Low-pass τ = 0.5 s:** wobble back-and-forth averages out; steady motion is only delayed.
+- **Lead term τ·|v̄|:** added to the displayed distance to remove that 0.5 s delay while moving; it fades to zero when stopping (an abrupt cut-off caused the 2.5 cm dip and the dashboard's +4 m bug).
+- **Deadband 0.05 m/s:** slower speeds count as zero. On the calibration pushes the deadband and smoothing together lose about 0.5 % of distance, and the focal calibration absorbs that. It depends slightly on how a push accelerates (about ±0.17 % between pushes).
+
+## 6.4 The Monte Carlo simulation in detail
+
+### Why simulate at all?
+
+The real tests give six distance runs and one usable car drive: too few to state a 99 % bound directly. The pipeline is also non-linear (skipped frames, gating, deadband, magnitude of a 2-D speed, quality-weighted noise) and its errors are correlated in time, so simple "add the variances" formulas aren't reliable. A Monte Carlo runs the actual pipeline many times with realistic random errors and reads the bounds off the results.
+
+### Design decisions
+
+- **Run the real algorithm.** The filter and odometer were ported to Python and vectorised so 100,000 trials run side by side. The port reproduces the phone's own output (typical difference 2e-6 m/s), and the vectorised version matches the scalar port to 1e-16 m/s.
+- **Use real conditions.** Every trial uses the real timestamps, camera quality sequence and stillness events of a recorded run. Only the sensor errors are random.
+- **Define the truth.** Distance: each of the six calibration pushes' own speed profile, smoothed over 0.5 s, scaled so its forward displacement is exactly 4.8768 m (a straight course). Speed: the first 95 s of the final car drive (steady cruise, acceleration to 8.7 m/s, braking), smoothed.
+- **Measure the error sizes from data, don't invent them.** Each input below comes from the logs; the two exceptions are labelled as assumptions.
+- **Keep the four quantities separate:** target (true), measured (camera), estimated (filter output), and the Monte Carlo distribution of estimated minus target.
+
+### Inputs and where each came from
+
+| Input | Value used | Source |
+| Camera frame noise | drawn from the real residuals in the same PSR band (robust σ ≈ {M['noise']['flow_cart_robust_sd']*1000:.0f} mm/s cart, {M['noise']['flow_car_robust_sd']*1000:.0f} mm/s car); car noise correlated frame to frame (ρ = {pv['rho_white_240hz']:.2f}) | residual of each frame from a 0.1 s running median; tails are heavy (excess kurtosis 15–25), so we resample the real residuals instead of assuming a bell curve |
+| Camera height h | σ = {dvd['height_sd_m_incl_rounding']*1000:.2f} mm | repeated LiDAR measurements at an unchanged mount (0.60 mm) plus 1 mm rounding in the app |
+| Calibration (focal ×c, offset δ) | c = {M['calibration_refit']['focal_correction']:.4f} ± {M['calibration_refit']['focal_correction_se']:.4f}, δ = {M['calibration_refit']['height_offset_m']*1000:.1f} ± {M['calibration_refit']['height_offset_se_m']*1000:.1f} mm, correlation {M['calibration_refit']['param_corr']:.2f} | least-squares refit on the six runs; drawn as a correlated pair because the two trade off against each other |
+| Unexplained per-run error (distance) | {dvd['unexplained_sd_pct']:.2f} % | variance matching: height and camera noise already explain all of the observed {dvd['empirical_residual_sd_pct']:.2f} % scatter |
+| Slow speed error (car) | σ = {pv['sd_slow_abs']:.2f} m/s, correlation time {pv['tau_slow_s']:.1f} s (a random process that wanders and returns to zero) | car-vs-GPS errors at PSR ≥ 15 minus GPS's own jitter; correlation from consecutive 1 s errors |
+| GPS (car) | jitter {pv['sd_gnss']:.2f} m/s, lag {abs(pv['lag_s']):.2f} s | second difference of the 1 Hz GPS series; cross-correlation with the camera |
+| IMU | noise {pv['sd_imu']:.3f} m/s² (car), 0.046 (cart); bias σ 0.02 m/s² | noise from still periods; **bias σ is an assumption** (it barely matters because the camera dominates) |
+| Trials | 100,000 each | fixed random seeds (20261004 and +7) so results are reproducible |
+
+### Decisions made along the way (and why)
+
+- **Smoothed truth.** Using the raw (noisy) filter speed as truth inflated the "true" distance, because the magnitude of a noisy 2-D speed is biased upward. Smoothing fixed that.
+- **Normalising the pipeline bias.** The pipeline alone reads about {p(mcd['pipeline_pilot']['raw_pipeline_bias_pct'],2)} % on these pushes (deadband and smoothing). The real calibration was fitted on the real pipeline, so it already absorbs that; the simulation divides it out once, like the calibration did. The push-to-push spread of that bias stays in as a real effect.
+- **Additive, not proportional, slow error.** A slow error proportional to speed predicted a spread of 0.79 m/s against the real 0.53 m/s, because real segment errors didn't grow with speed. The additive model matches (0.52 m/s), so it is the main model; the proportional one is kept as a sensitivity case.
+- **Two distance scenarios.** "Repeat run" keeps the calibration fixed (comparable with the in-sample errors); "new run" also randomises the calibration constants (comparable with leave-one-out). The new-run numbers are the ones to quote.
+- **Random subsets for convergence.** Trials are generated push by push, so the first N trials all come from the first pushes. An early convergence check used those prefixes and looked lopsided; it was redone with random subsets.
+
+### Results and checks
+
+- **Distance (new run):** 95 % within {p(S2['int95_pct'][0],2)} to +{p(S2['int95_pct'][1],2)} %; 99 % within {p(S2['int99_pct'][0],2)} to +{p(S2['int99_pct'][1],2)} %; |error| below {p(S2['abs_p95_pct'],2)} % ({S2['abs_p95_m']*100:.1f} cm) 95 % of the time.
+- **Speed (car, instantaneous):** 95 % within ±{p(VM['abs_p95'],2)} m/s, 99 % within ±{p(VM['abs_p99'],2)} m/s; 10 s averages within ±{p(VM['mean_over_10s']['abs_p95'],2)} m/s 95 % of the time.
+- **Convergence:** the 95th and 99th percentiles change by less than a few hundredths of a percent from 10,000 to 100,000 trials, and five extra random seeds agree.
+- **Analytic check:** adding the independent error terms by hand gives {p(mcd['analytic_sd_pct'],2)} % against the simulation's {p(S2['sd_pct'],2)} %.
+- **Against reality:** distance spread {p(mcd['empirical_vs_mc']['loo_vs_S2']['emp_sd'],2)} % real vs {p(mcd['empirical_vs_mc']['loo_vs_S2']['mc_sd'],2)} % simulated; car speed {p(mcv['empirical_vs_mc']['real_sd'],2)} vs {p(mcv['empirical_vs_mc']['mc_obs_sd'],2)} m/s (after adding GPS jitter), with matching 95th percentiles.
+- **Sensitivity:** swapping the camera-noise model (real residuals, bell curve, heavy-tailed) changes almost nothing. Tripling camera noise widens distance bounds only slightly. The bounds are dominated by height and calibration (distance) and by the slow drift (speed). Extrapolating the calibration to a 0.50 m mount widens the distance 95 % interval to about ±1.5 %.
+
+### What the Monte Carlo cannot tell you
+
+- **It's partly circular.** The slow speed error and the per-run scatter were measured from the same runs the simulation is compared with, so matching spreads are expected; the matching tails and time behaviour are the real check.
+- **It doesn't simulate failures:** blur above about 25 mph, the zero lock, high mounts, or ride-height changes. The bounds only apply inside the tested envelope.
+- **It inherits the reference's limits:** six runs on one floor at two heights, and one night drive measured against phone GPS.
+- **Its numbers are prediction intervals** (where 95 % of individual measurements fall), not confidence intervals of an average.
+"""
+TEXT = TEXT + TECH
+
+
+def to_html(text):
+    """Same mini-syntax → HTML (for pasting into an existing Google Doc)."""
+    out, lines, i, para = [], text.strip().split("\n"), 0, []
+    b = lambda s: re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    def flush():
+        if para:
+            out.append(f"<p>{b(' '.join(para))}</p>"); para.clear()
+    while i < len(lines):
+        ln = lines[i].rstrip()
+        if not ln:
+            flush(); i += 1; continue
+        for pre, tag in (("### ", "h3"), ("## ", "h2"), ("# ", "h1")):
+            if ln.startswith(pre):
+                flush(); out.append(f"<{tag}>{b(ln[len(pre):])}</{tag}>"); break
+        else:
+            if ln.startswith("- ") or ln[:3] in {f"{n}. " for n in range(1, 10)}:
+                flush(); kind = "ul" if ln.startswith("- ") else "ol"; items = []
+                while i < len(lines) and (lines[i].startswith("- ") if kind == "ul" else lines[i][:3] in {f"{n}. " for n in range(1, 10)}):
+                    items.append(f"<li>{b(lines[i][2:] if kind == 'ul' else lines[i][3:])}</li>"); i += 1
+                out.append(f"<{kind}>{''.join(items)}</{kind}>"); continue
+            elif ln.startswith("> "):
+                flush(); out.append(f'<table border="1" style="border-collapse:collapse;width:100%"><tr><td style="background:#EAF2FB;padding:6px">{b(ln[2:])}</td></tr></table><p></p>')
+            elif ln.startswith("| "):
+                flush(); rows = []
+                while i < len(lines) and lines[i].startswith("| "):
+                    rows.append([x.strip() for x in lines[i].strip().strip("|").split(" | ")]); i += 1
+                h = "".join(f'<th style="background:#0072B2;color:#ffffff;padding:4px">{b(c)}</th>' for c in rows[0])
+                body = "".join("<tr>" + "".join(f'<td style="padding:4px">{b(c)}</td>' for c in r) + "</tr>" for r in rows[1:])
+                out.append(f'<table border="1" style="border-collapse:collapse"><tr>{h}</tr>{body}</table><p></p>'); continue
+            else:
+                para.append(ln.strip())
+        i += 1
+    flush()
+    return "\n".join(out)
+
+
 def add_runs(par, text, size=None):
     for i, part in enumerate(re.split(r"(\*\*[^*]+\*\*)", text)):
         if not part:
@@ -430,6 +669,8 @@ def main():
     flush()
     dst = os.path.join(OUT, "Team_Briefing_Judge_Prep.docx")
     doc.save(dst)
+    with open(os.path.join(OUT, "briefing_part6_technical.html"), "w", encoding="utf-8") as fh:
+        fh.write("<html><body>" + to_html(TECH) + "</body></html>")
     words = len(re.findall(r"\w+", TEXT))
     print("saved", dst, "words:", words)
 
