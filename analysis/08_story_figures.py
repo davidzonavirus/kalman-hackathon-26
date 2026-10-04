@@ -81,33 +81,54 @@ def main():
         rows.append(pd.DataFrame(dict(era=era, shift=shift[ok], q=f.quality.to_numpy()[ok], hz=1 / np.nanmedian(dt))))
     d = pd.concat(rows)
     edges = np.array([1, 2, 4, 6, 8, 12, 16, 24, 32, 48])
-    fig, axs = plt.subplots(1, 2, figsize=(11, 3.9))
-    ax = axs[0]
-    med = {}
-    for era, col in (("Debug build (60–120 fps, h unknown)", C["red"]), ("Release, 240 fps (16 ft pushes)", C["blue"])):
-        x = d[d.era == era]
-        b = np.digitize(x["shift"], edges)
-        m = [x.q[b == i].median() if (b == i).sum() > 30 else np.nan for i in range(1, len(edges))]
-        mid = np.sqrt(edges[:-1] * edges[1:])
-        ax.plot(mid, m, "o-", color=col, label=era)
-        med[era] = dict(zip(mid.round(1).tolist(), m))
-    ax.set_xscale("log"); ax.set_yscale("log")
     from matplotlib.ticker import FixedLocator, NullFormatter, NullLocator, ScalarFormatter
-    for axis, ticks in ((ax.xaxis, [1, 2, 4, 8, 16, 32, 48]), (ax.yaxis, [30, 50, 100, 200, 400])):
-        axis.set_major_locator(FixedLocator(ticks))
-        axis.set_major_formatter(ScalarFormatter())
-        axis.set_minor_locator(NullLocator()); axis.set_minor_formatter(NullFormatter())
-    ax.set_xlim(1, 52); ax.set_ylim(25, 480)
-    ax.set_xlabel("image shift between frames (full-res px, log scale)"); ax.set_ylabel("flow quality (PSR, median, log scale)")
-    ax.set_title("Within one setup, PSR falls steeply with shift/frame")
-    ax.legend(fontsize=8)
-    ax = axs[1]
-    v = np.linspace(0.05, 3, 200)
-    for hz, col, lab in ((90, C["red"], "90 Hz (Debug)"), (240, C["blue"], "240 Hz (Release)")):
-        ax.plot(v, v / hz * 884 / 0.186, color=col, label=lab)
-    ax.set_xlabel("cart speed at h = 0.186 m (m/s)"); ax.set_ylabel("shift per frame (px)")
-    ax.set_title("Same speed → 2.7× less shift at 240 fps"); ax.legend(fontsize=8)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "story_framerate.png"), dpi=170); plt.close(fig)
+    with plt.rc_context({"font.size": 13, "axes.titlesize": 14, "axes.labelsize": 13,
+                         "xtick.labelsize": 12, "ytick.labelsize": 12, "legend.fontsize": 11.5}):
+        fig, axs = plt.subplots(1, 2, figsize=(14, 6), gridspec_kw=dict(width_ratios=[1.15, 1]))
+        ax = axs[0]
+        med = {}
+        series = (("Debug build, 60–120 fps (camera height unknown)", "Debug build (60–120 fps, h unknown)", C["red"], -1),
+                  ("Release build, 240 fps (16 ft pushes)", "Release, 240 fps (16 ft pushes)", C["blue"], 1))
+        mid = np.sqrt(edges[:-1] * edges[1:])
+        curves = {}
+        for label, era, col, side in series:
+            x = d[d.era == era]
+            b = np.digitize(x["shift"], edges)
+            curves[era] = [x.q[b == i].median() if (b == i).sum() > 30 else np.nan for i in range(1, len(edges))]
+        for label, era, col, side in series:
+            m = curves[era]
+            other = [v for k, v in curves.items() if k != era][0]
+            ax.plot(mid, m, "o-", color=col, label=label, lw=2.2, ms=8)
+            for xm, ym, yo in zip(mid, m, other):
+                if not np.isfinite(ym):
+                    continue
+                # label on the side away from the other line (above if higher, below if lower)
+                up = (ym >= yo) if np.isfinite(yo) else side > 0
+                off, ha, va = (0, 11 if up else -11), "center", ("bottom" if up else "top")
+                ax.annotate(f"{ym:.0f}", (xm, ym), textcoords="offset points", xytext=off,
+                            ha=ha, va=va, fontsize=11, color=col, fontweight="bold")
+            med[era] = dict(zip(mid.round(1).tolist(), m))
+        ax.set_xscale("log"); ax.set_yscale("log")
+        for axis, ticks in ((ax.xaxis, [1, 2, 4, 8, 16, 32]), (ax.yaxis, [25, 50, 100, 200, 400])):
+            axis.set_major_locator(FixedLocator(ticks))
+            axis.set_major_formatter(ScalarFormatter())
+            axis.set_minor_locator(NullLocator()); axis.set_minor_formatter(NullFormatter())
+        ax.set_xlim(1.1, 48); ax.set_ylim(18, 560)
+        ax.set_xlabel("image shift between frames (pixels, log scale)")
+        ax.set_ylabel("flow quality, median PSR (log scale)")
+        ax.set_title("Bigger shift per frame → lower quality")
+        ax.legend(loc="lower left", frameon=True, framealpha=0.95)
+        ax = axs[1]
+        v = np.linspace(0, 3, 200)
+        for hz, col, lab in ((90, C["red"], "90 fps (Debug build)"), (240, C["blue"], "240 fps (Release build)")):
+            ax.plot(v, v / hz * 884 / 0.186, color=col, label=lab, lw=2.4)
+        ax.set_xlim(0, 3); ax.set_ylim(0, 170)
+        ax.set_xlabel("cart speed (m/s), camera 0.186 m above floor")
+        ax.set_ylabel("image shift per frame (pixels)")
+        ax.set_title("Same speed → 2.7× less shift at 240 fps")
+        ax.legend(loc="upper left", frameon=True, framealpha=0.95)
+        fig.tight_layout(w_pad=3)
+        fig.savefig(os.path.join(FIG, "story_framerate.png"), dpi=170); plt.close(fig)
     metrics["psr_vs_shift"] = med
 
     # ---------- C. Camera crash -> IMU-only runaway ----------
