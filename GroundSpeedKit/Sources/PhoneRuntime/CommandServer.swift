@@ -24,6 +24,8 @@ public final class CommandServer: @unchecked Sendable {
     public let port: UInt16
     public let bonjourName: String?
     private let queue = DispatchQueue(label: "gsk.commands", qos: .userInitiated)
+    /// Serial: replies stay in request order.
+    private let handlerQueue = DispatchQueue(label: "gsk.commands.handler", qos: .userInitiated)
     private var listener: NWListener?
     private var clients: [ObjectIdentifier: Client] = [:]
     private var _state: String = "stopped"
@@ -42,31 +44,65 @@ public final class CommandServer: @unchecked Sendable {
     public var state: String { queue.sync { _state } }
     public var clientCount: Int { queue.sync { clients.count } }
 
+    private var wantRunning = false
+
     public func start() throws {
+        let l = try makeListener()
+        queue.sync {
+            self.wantRunning = true
+            self.listener = l
+        }
+        l.start(queue: queue)
+    }
+
+    /// iOS fails the listener when the app is backgrounded or the network changes
+    /// (hotspot drop/rejoin) and never revives it, so a failed listener is rebuilt.
+    private func makeListener() throws -> NWListener {
         guard let p = NWEndpoint.Port(rawValue: port) else { throw CommandServerError.badPort }
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         let l = try NWListener(using: params, on: p)
         l.service = NWListener.Service(name: bonjourName, type: Self.bonjourType)
-        l.stateUpdateHandler = { [weak self] st in
+        l.stateUpdateHandler = { [weak self, weak l] st in
             guard let self else { return }
             switch st {
             case .ready: self._state = "listening:\(self.port)"
-            case .failed(let e): self._state = "failed: \(e)"
+            case .failed(let e):
+                self._state = "failed: \(e)"
+                l?.cancel()
+                self.scheduleRestart()
             case .waiting(let e): self._state = "waiting: \(e)"
-            case .cancelled: self._state = "stopped"
+            case .cancelled: if !self.wantRunning { self._state = "stopped" }
             default: break
             }
         }
         l.newConnectionHandler = { [weak self] conn in
             self?.accept(conn)
         }
-        queue.sync { self.listener = l }
-        l.start(queue: queue)
+        return l
+    }
+
+    private func scheduleRestart() {
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.wantRunning else { return }
+            self.listener?.cancel()
+            guard let l = try? self.makeListener() else { self.scheduleRestart(); return }
+            self.listener = l
+            l.start(queue: self.queue)
+        }
+    }
+
+    /// Rebuilds the listener unless it is listening (call when the app returns to foreground).
+    public func restartIfNeeded() {
+        queue.async { [weak self] in
+            guard let self, self.wantRunning, !self._state.hasPrefix("listening") else { return }
+            self.scheduleRestart()
+        }
     }
 
     public func stop() {
         queue.sync {
+            wantRunning = false
             listener?.cancel()
             listener = nil
             for (_, c) in clients { c.connection.cancel() }
@@ -119,8 +155,12 @@ public final class CommandServer: @unchecked Sendable {
             if let data, !data.isEmpty, let client = self.clients[ObjectIdentifier(conn)] {
                 let lines = client.lines.append(data)
                 for line in lines {
-                    let reply = self.process(line)
-                    conn.send(content: reply.encodeLine(), completion: .contentProcessed { _ in })
+                    // Handlers may block for seconds (measure_height); doing that on `queue`
+                    // would stall `state`/`clientCount`, which the UI reads with queue.sync.
+                    self.handlerQueue.async {
+                        let reply = self.process(line)
+                        conn.send(content: reply.encodeLine(), completion: .contentProcessed { _ in })
+                    }
                 }
             }
             if isComplete || error != nil {

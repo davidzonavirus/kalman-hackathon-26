@@ -102,6 +102,30 @@ private struct DistanceBlock: View {
                     .font(Theme.serif(22))
                     .foregroundStyle(Theme.inkSoft)
             }
+            SpeedLine(speed: model.snap.speed)
+        }
+    }
+}
+
+/// Ground speed |v| in m/s, with km/h and mph.
+private struct SpeedLine: View {
+    let speed: Double
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Micro("Speed")
+            Text(String(format: "%.2f", speed))
+                .font(Theme.mono(30))
+                .foregroundStyle(Theme.ink)
+                .contentTransition(.numericText(value: speed))
+                .animation(.easeOut(duration: 0.15), value: speed)
+            Text("m/s").font(Theme.serif(13)).foregroundStyle(Theme.inkSoft)
+            Text(String(format: "· %.1f mph", speed * 2.236936))
+                .font(Theme.mono(18))
+                .foregroundStyle(Theme.ink)
+            Text(String(format: "%.1f km/h", speed * 3.6))
+                .font(Theme.mono(11))
+                .foregroundStyle(Theme.inkSoft)
         }
     }
 }
@@ -198,9 +222,14 @@ private struct DiagnosticsLine: View {
 
     var body: some View {
         let s = model.snap
-        let gnss = model.gnssHorizontalAcc >= 0 ? String(format: "±%.0f m", model.gnssHorizontalAcc) : "—"
+        // Speed accuracy is what the filter uses; horizontal (position) accuracy of a phone is
+        // ±3–10 m no matter what and doesn't enter the speed estimate.
+        let gnss = model.gnssSpeedAcc >= 0
+            ? String(format: "±%.2f m/s (pos ±%.0f m)", model.gnssSpeedAcc, model.gnssHorizontalAcc)
+            : "—"
         let bat = model.battery.map { "\($0)%" } ?? "—"
-        Text(String(format: "PSR %.1f · h %.3f m · GNSS %@ · BAT %@", s.flowQuality, s.h, gnss, bat))
+        let hSource = s.status.contains(.lidarOK) ? "LiDAR" : "set"
+        Text(String(format: "PSR %.1f · h %.3f m %@ · GNSS %@ · BAT %@", s.flowQuality, s.h, hSource, gnss, bat))
             .font(Theme.mono(10))
             .foregroundStyle(Theme.inkSoft)
             .lineLimit(1)
@@ -218,6 +247,18 @@ private struct ControlsRow: View {
             RecordKey()
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
+                Button {
+                    model.zero()
+                } label: {
+                    Text("Zero")
+                        .font(Theme.serif(17))
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 112, height: 40)
+                        .overlay(Capsule().stroke(Theme.ink, lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .sensoryFeedback(.impact(weight: .light), trigger: model.zeros)
                 Button {
                     model.mark()
                 } label: {

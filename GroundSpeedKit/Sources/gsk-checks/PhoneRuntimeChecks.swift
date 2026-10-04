@@ -14,6 +14,7 @@ func phoneRuntimeChecks(_ r: inout CheckRunner) {
     engineSyntheticChecks(&r, dir: tmp.appendingPathComponent("engine"))
     distanceContinuityChecks(&r, dir: tmp.appendingPathComponent("continuity"))
     startMidMotionChecks(&r, dir: tmp.appendingPathComponent("midmotion"))
+    flowLossChecks(&r)
     senderRoundtripChecks(&r)
     commandServerChecks(&r, dir: tmp.appendingPathComponent("cmd"))
 }
@@ -186,6 +187,46 @@ private func distanceContinuityChecks(_ r: inout CheckRunner, dir: URL) {
 }
 
 /// start_run during cruise must not disturb the estimate: only distance restarts.
+/// Camera dead (no flow at all): IMU-only velocity must not run away once the phone is
+/// still, and a Zero must not let it drift. Mirrors the 21:34 device run (v̂ → 0.9 m/s).
+private func flowLossChecks(_ r: inout CheckRunner) {
+    let engine = SensorFusionEngine()
+    var t = Clock.now()
+    var seed: UInt64 = 42
+    func noise() -> Double {
+        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+        return (Double(seed >> 11) / Double(1 << 53) - 0.5) * 0.05   // ±0.025 m/s², std ≈ 0.014
+    }
+    func feed(_ seconds: Double, ax: (Double) -> Double, bias: Double) {
+        let t0 = t
+        while t < t0 + seconds {
+            engine.ingestIMU(t: t, ax: ax(t - t0) + bias + noise(), ay: noise(), az: noise(), gx: 0, gy: 0, gz: 0)
+            t += 0.01
+        }
+    }
+    // Handled for 2 s (0.5 m/s² for 1 s → ~0.5 m/s IMU velocity), then at rest with a 0.03 bias.
+    feed(1, ax: { _ in 0.5 }, bias: 0.03)
+    feed(1, ax: { s in -0.05 * sin(s * 20) }, bias: 0.03)
+    feed(6, ax: { _ in 0 }, bias: 0.03)
+    engine.drain()
+    let rest = engine.snapshot()
+    r.near("flow lost: still phone → IMU velocity zeroed", rest.speed, 0, tol: 0.05)
+    let d0 = rest.distance
+    feed(10, ax: { _ in 0 }, bias: 0.03)
+    engine.drain()
+    r.near("flow lost: still phone adds no distance", engine.snapshot().distance - d0, 0, tol: 0.05)
+
+    // Zero with a large uncorrected bias: velocity must stay put during the 2 s window.
+    engine.calibrate()
+    feed(1, ax: { _ in 0 }, bias: 0.3)
+    engine.drain()
+    r.near("zero: v stays ~0 during calibration window", engine.snapshot().speed, 0, tol: 0.05)
+    feed(2, ax: { _ in 0 }, bias: 0.3)
+    engine.drain()
+    r.near("zero: bias learned", engine.currentBias[0], 0.3, tol: 0.02)
+    r.near("zero: v ~0 after calibration", engine.snapshot().speed, 0, tol: 0.05)
+}
+
 private func startMidMotionChecks(_ r: inout CheckRunner, dir: URL) {
     let rt = GroundSpeedRuntime(settings: RuntimeSettings(), runsDirectory: dir)
     let push = SimPush(config: SimPush.Config())

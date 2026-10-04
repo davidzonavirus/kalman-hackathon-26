@@ -17,6 +17,18 @@ SAMPLE = dict(seq=42, t=1234.5, v_x=1.25, v_y=-0.03, sigma_vx=0.05, sigma_vy=0.0
               status=P.IMU_OK | P.FLOW_OK | P.FILTER_INIT, battery=87, torch=60)
 
 
+SAMPLE_V2 = dict(SAMPLE, ax=0.5, ay=-0.25, gz=0.01, flow_vx=1.2, flow_vy=-0.02,
+                 net_forward=3.25)
+
+
+def load_golden_v2():
+    """A 144-hex-digit (72-byte) frame in docs/golden_frame.md, if Agent A has added one."""
+    if not GOLDEN_MD.exists():
+        return None
+    hexes = re.findall(r"\b([0-9a-fA-F]{144})\b", GOLDEN_MD.read_text())
+    return bytes.fromhex(hexes[0]) if hexes else None
+
+
 def load_golden():
     if not GOLDEN_MD.exists():
         return None, None
@@ -119,6 +131,83 @@ class TestFrames(unittest.TestCase):
         self.assertTrue(line.endswith(b"\n"))
         self.assertEqual(json.loads(line), {"cmd": "set_torch", "level": 0.6})
         self.assertEqual(P.decode_line(b'{"ok":true,"cmd":"ping"}\n')["ok"], True)
+
+
+class TestFramesV2(unittest.TestCase):
+    def test_layout(self):
+        raw = P.encode_frame(**SAMPLE_V2)
+        self.assertEqual(len(raw), 72)
+        self.assertEqual(raw[1], 2)
+        # bytes 2..45 identical to v1 (only the version byte differs in the common part)
+        v1 = P.encode_frame(**SAMPLE)
+        self.assertEqual(raw[2:46], v1[2:46])
+        self.assertEqual(struct.unpack_from("<6f", raw, 46),
+                         tuple(F32(SAMPLE_V2[k]) for k in P.V2_EXTRA))
+        self.assertEqual(struct.unpack_from("<H", raw, 70)[0], P.crc16_ccitt_false(raw[:70]))
+
+    def test_roundtrip(self):
+        f = P.decode_frame(P.encode_frame(**SAMPLE_V2))
+        self.assertEqual(f["version"], 2)
+        self.assertEqual(f["fmt"], "bin")
+        for k, v in SAMPLE_V2.items():
+            if isinstance(v, float) and k != "t":
+                self.assertEqual(f[k], F32(v), k)
+            else:
+                self.assertEqual(f[k], v, k)
+
+    def test_v1_has_none_extras(self):
+        f = P.decode_frame(P.encode_frame(**SAMPLE))
+        self.assertEqual(f["version"], 1)
+        for k in P.V2_EXTRA:
+            self.assertIsNone(f[k])
+
+    def test_explicit_version(self):
+        self.assertEqual(len(P.encode_frame(**SAMPLE, version=2)), 72)
+        self.assertEqual(len(P.encode_frame(**SAMPLE_V2, version=1)), 48)
+
+    def test_bad_crc_and_length_version_mismatch(self):
+        raw = bytearray(P.encode_frame(**SAMPLE_V2))
+        raw[60] ^= 0x10
+        with self.assertRaises(P.FrameError) as cm:
+            P.decode_frame(bytes(raw))
+        self.assertEqual(cm.exception.kind, "crc")
+        v1 = P.encode_frame(**SAMPLE)
+        v2 = P.encode_frame(**SAMPLE_V2)
+        for bad in (v1[:1] + b"\x02" + v1[2:],        # says v2 but 48 bytes
+                    v2[:1] + b"\x01" + v2[2:],        # says v1 but 72 bytes
+                    v2[:71], v2[:1] + b"\x03" + v2[2:]):
+            with self.assertRaises(P.FrameError) as cm:
+                P.decode_frame(bad)
+            self.assertEqual(cm.exception.kind, "decode")
+
+    def test_json_v2(self):
+        f = P.decode_frame(P.encode_json_frame(**SAMPLE_V2))
+        self.assertEqual((f["version"], f["fmt"]), (2, "json"))
+        for k, v in SAMPLE_V2.items():
+            self.assertEqual(f[k], v, k)
+        # keys present but no "version" key -> still v2
+        obj = dict(SAMPLE_V2)
+        self.assertEqual(P.decode_frame(json.dumps(obj).encode())["version"], 2)
+        # version 2 declared but a v2 key missing -> rejected
+        obj = dict(SAMPLE_V2, version=2)
+        del obj["net_forward"]
+        with self.assertRaises(P.FrameError):
+            P.decode_frame(json.dumps(obj).encode())
+
+    def test_golden_v2(self):
+        raw = load_golden_v2()
+        if raw is None:
+            self.skipTest("no v2 golden frame in docs/golden_frame.md yet")
+        f = P.decode_frame(raw)
+        self.assertEqual(f["version"], 2)
+        re_enc = P.encode_frame(**{k: f[k] for k in P.FIELDS_V2}, version=2)
+        self.assertEqual(re_enc.hex(), raw.hex())
+
+    def test_csv_columns(self):
+        self.assertEqual(P.LOG_CSV_FIELDS[:9], P.EST_CSV_FIELDS)
+        for k in P.V2_EXTRA + ("seq", "recv_time", "version"):
+            self.assertIn(k, P.LOG_CSV_FIELDS)
+        self.assertIn("zero", P.COMMANDS)
 
 
 class TestSeqTracker(unittest.TestCase):

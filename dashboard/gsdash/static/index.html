@@ -9,95 +9,109 @@
 </head>
 <body class="nosignal">
 <header class="top fade" style="--i:0">
-  <div class="title">
-    <h1>Ground Speed</h1>
-    <span class="sub">optical flow · imu · gnss — kalman estimate</span>
-  </div>
-  <div class="runstate" id="runstate"><span class="rdot"></span><span id="runtext">Offline</span> <span class="num" id="runclock"></span></div>
+  <div class="title"><h1>Ground Speed</h1><span class="sub">kalman estimate · optical flow + IMU</span></div>
+  <div class="runstate" id="runstate"><span class="rdot"></span><span id="runtext">Offline</span><span class="num" id="runclock"></span></div>
+  <div class="linkline num"><i class="ldot" id="ldot"></i><span id="linktext">no telemetry</span></div>
   <div class="toprt">
-    <button class="link" id="btn-theme" title="Toggle light / dark">Dark</button>
+    <span class="units" role="group" aria-label="distance units"><button class="seg" data-unit="m">m</button><button class="seg" data-unit="ft">ft</button></span>
+    <button class="link" id="btn-theme">Dark</button>
     <button class="link" id="btn-fs" title="Fullscreen (F)">Fullscreen</button>
   </div>
 </header>
 
-<main>
-  <section class="readout fade" style="--i:1">
-    <div class="hero">
-      <div class="cap">Distance</div>
-      <div class="distance num"><span id="dist">0.00</span><span class="unit">m</span></div>
-      <div class="targetline">
-        <span class="cap">of</span>
-        <input id="target" class="num" type="number" step="0.01" min="0" value="10.00" aria-label="target distance">
-        <span class="cap">m target</span>
-        <span class="gauge"><span class="fill" id="gauge-fill"></span></span>
-      </div>
-      <div class="result num" id="result"></div>
-    </div>
-    <div class="vels">
-      <div class="vrow">
-        <div class="cap">v<sub>x</sub> forward</div>
-        <div class="vval num"><span id="vx">0.00</span><span class="pm">±<span id="svx">0.00</span></span><span class="unit">m/s</span></div>
-      </div>
-      <div class="vrow minor">
-        <div class="cap">v<sub>y</sub> lateral</div>
-        <div class="vval num"><span id="vy">0.00</span><span class="pm">±<span id="svy">0.00</span></span><span class="unit">m/s</span></div>
-      </div>
-      <div class="note">± is 2σ of the filter estimate</div>
-    </div>
-  </section>
+<section class="hero fade" style="--i:1">
+  <div class="h-dist">
+    <div class="cap">Distance travelled <span class="hint" id="zero-age"></span></div>
+    <div class="big num"><span id="dist">0.00</span><span class="unit" id="dist-unit">m</span></div>
+    <div class="sub2 num">net forward <b id="net">0.00</b> <span class="u" data-u="len">m</span></div>
+  </div>
+  <div class="h-speed">
+    <div class="cap">Speed |v|</div>
+    <div class="big num"><span id="speed">0.00</span><span class="unit">m/s</span></div>
+    <div class="sub2 num"><b id="kmh">0.0</b> km/h · <b id="mph">0.0</b> mph</div>
+  </div>
+  <div class="h-vel">
+    <div class="vrow"><span class="cap">v<sub>x</sub></span><span class="vval num"><span id="vx">0.00</span><span class="pm">±<span id="svx">0.00</span></span></span></div>
+    <div class="vrow"><span class="cap">v<sub>y</sub></span><span class="vval num"><span id="vy">0.00</span><span class="pm">±<span id="svy">0.00</span></span></span></div>
+    <div class="note">m/s, ± is 2σ</div>
+  </div>
+</section>
 
-  <section class="plot fade" style="--i:2">
-    <div class="plothead">
-      <span class="cap">Velocity, last 20 s</span>
+<section class="statusbar fade" style="--i:2">
+  <div class="sensors">
+    <span class="s" id="L-IMU"><i></i>IMU</span>
+    <span class="s" id="L-FLOW"><i></i>Flow<em id="gated"></em></span>
+    <span class="s" id="L-GNSS"><i></i>GNSS</span>
+    <span class="s" id="L-LIDAR"><i></i>LiDAR</span>
+    <span class="s" id="L-ZUPT"><i></i>ZUPT</span>
+    <span class="s" id="L-REC"><i></i>Rec</span>
+    <span class="sflag" id="sflag"></span>
+  </div>
+  <div class="aux num" id="aux">–</div>
+</section>
+
+<div class="body">
+  <section class="charts fade" style="--i:3">
+    <div class="charthead">
+      <span class="zoom" role="group" aria-label="time window">
+        <button class="seg" data-zoom="20">20 s</button><button class="seg" data-zoom="60">60 s</button><button class="seg" data-zoom="run">Run</button>
+      </span>
+      <span class="viewstate" id="viewstate">live</span>
+      <button class="link" id="btn-live" hidden>back to live</button>
       <span class="flowmsg" id="flowmsg">flow lost — dead-reckoning on IMU</span>
-      <span class="legend"><i class="k vx"></i>v<sub>x</sub> ± 2σ <i class="k vy"></i>v<sub>y</sub> <i class="k lost"></i>flow lost</span>
     </div>
     <div class="screen">
-      <canvas id="plot"></canvas>
+      <canvas id="chart"></canvas>
+      <div class="tip num" id="tip" hidden></div>
       <div class="nosig" id="nosig"><em>No signal</em><span id="nosig-sub">waiting for telemetry on UDP :9000</span></div>
     </div>
   </section>
 
-  <section class="statusbar fade" style="--i:3">
-    <div class="sensors">
-      <span class="s" id="L-IMU"><i></i>IMU</span>
-      <span class="s" id="L-FLOW"><i></i>Flow<em id="gated"></em></span>
-      <span class="s" id="L-GNSS"><i></i>GNSS</span>
-      <span class="s" id="L-LIDAR"><i></i>LiDAR</span>
-      <span class="s" id="L-ZUPT"><i></i>ZUPT</span>
-      <span class="s" id="L-REC"><i></i>Rec</span>
-      <span class="sflag" id="sflag"></span>
+  <aside class="side fade" style="--i:4">
+    <div class="primary">
+      <button class="big-btn zero" id="btn-zero" title="Zero distance and net forward, re-estimate IMU bias (keep still ~1 s)">Zero</button>
+      <button class="big-btn track" id="btn-track">Start tracking</button>
     </div>
-    <div class="linkline num" id="linkline"><i class="ldot" id="ldot"></i><span id="linktext">no telemetry</span></div>
-  </section>
-
-  <section class="controls fade" style="--i:4">
-    <div class="buttons">
-      <button class="tb primary" id="btn-start">Start</button>
-      <button class="tb" id="btn-stop">Stop</button>
+    <div class="minor-btns">
       <button class="tb" id="btn-mark" title="Mark (M)">Mark</button>
       <button class="tb" id="btn-cal">Calibrate</button>
-      <button class="tb" id="btn-reset">Reset</button>
-      <span class="torch"><span class="cap">Torch</span><input id="torch-slider" type="range" min="0" max="100" step="5" value="0"><span id="torch-val" class="num">0%</span></span>
+      <button class="tb" id="btn-height" title="LiDAR ride height + Zero (keep the cart still ~3 s; flow pauses, then comes back)">Measure h</button>
+      <span class="torch"><span class="cap">Torch</span><input id="torch-slider" type="range" min="0" max="100" step="5" value="0" aria-label="torch"><span id="torch-val" class="num">0%</span></span>
     </div>
-    <div class="aux num" id="aux">–</div>
-  </section>
+    <div class="target">
+      <span class="cap">Target</span>
+      <input id="target" class="num" type="number" step="0.01" min="0" aria-label="target distance">
+      <span class="u" data-u="len">m</span>
+      <span class="hint" id="target-alt"></span>
+    </div>
 
-  <section class="drawers fade" style="--i:5">
+    <div class="runs">
+      <div class="runshead"><span class="cap">Runs</span><span class="spacer"></span><button class="link" id="btn-export">Export CSV</button><button class="link" id="btn-clear">Clear</button></div>
+      <div class="tablewrap">
+        <table class="num" id="runs">
+          <thead><tr><th>#</th><th class="l">label</th><th>time</th><th>dist</th><th>net</th><th>avg</th><th>max</th><th title="most common speed (cruise speed), m/s">mode</th><th>err</th><th></th></tr></thead>
+          <tbody id="runs-body"></tbody>
+        </table>
+        <div class="empty" id="runs-empty">No runs yet. Zero, then Start tracking.</div>
+      </div>
+      <div class="rundetail num" id="rundetail" hidden></div>
+    </div>
+
     <details id="setup">
       <summary>Setup</summary>
       <div class="drawer">
-        <label><span class="cap">Run label</span><input id="label" type="text" placeholder="optional, e.g. carpet_03" spellcheck="false"></label>
+        <label><span class="cap">Run label</span><input id="label" type="text" placeholder="optional, e.g. hallway_45ft" spellcheck="false"></label>
         <label><span class="cap">Phone IP</span><input id="phone-input" type="text" placeholder="auto" spellcheck="false"><button class="tb" id="btn-phone">Set</button></label>
-        <div class="row"><button class="tb" id="btn-ping">Ping</button><span class="cmdstate num" id="cmd-state"></span></div>
+        <div class="row"><button class="tb" id="btn-ping">Ping</button><button class="tb" id="btn-reset">Reset distance</button></div>
+        <div class="cmdstate num" id="cmd-state"></div>
       </div>
     </details>
     <details id="logbox">
       <summary>Command log <span class="num" id="logcount"></span></summary>
       <ol id="cmdlog" class="num"></ol>
     </details>
-  </section>
-</main>
+  </aside>
+</div>
 <script src="app.js"></script>
 </body>
 </html>

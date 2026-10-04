@@ -10,6 +10,10 @@ public enum Command: Sendable, Equatable, Codable {
     /// 0.0 = off … 1.0 = full.
     case setTorch(level: Double)
     case resetDistance
+    /// Zero distance + net forward and re-estimate IMU bias (phone held still ~1 s).
+    case zero
+    /// LiDAR height measurement (cart still ~2 s, flow paused). Reply carries `h` and `message`.
+    case measureHeight
 
     /// Wire name used in the `"cmd"` field.
     public var name: String {
@@ -21,6 +25,8 @@ public enum Command: Sendable, Equatable, Codable {
         case .calibrate: return "calibrate"
         case .setTorch: return "set_torch"
         case .resetDistance: return "reset_distance"
+        case .zero: return "zero"
+        case .measureHeight: return "measure_height"
         }
     }
 
@@ -47,6 +53,8 @@ public enum Command: Sendable, Equatable, Codable {
             }
             self = .setTorch(level: lvl)
         case "reset_distance": self = .resetDistance
+        case "zero": self = .zero
+        case "measure_height": self = .measureHeight
         default: throw ParseError.unknownCommand(cmd)
         }
     }
@@ -87,9 +95,15 @@ public struct CommandReply: Sendable, Equatable, Codable {
     public var error: String?
     /// Run distance at stop (m); carried by `stop_run` replies, omitted otherwise.
     public var distance: Double?
+    /// Measured camera height (m); carried by successful `measure_height` replies.
+    public var h: Double?
+    /// Human-readable result (e.g. why a height measurement was rejected).
+    public var message: String?
 
-    public init(ok: Bool, cmd: String, run: String? = nil, error: String? = nil, distance: Double? = nil) {
+    public init(ok: Bool, cmd: String, run: String? = nil, error: String? = nil, distance: Double? = nil,
+                h: Double? = nil, message: String? = nil) {
         self.ok = ok; self.cmd = cmd; self.run = run; self.error = error; self.distance = distance
+        self.h = h; self.message = message
     }
 
     public static func success(_ cmd: String, run: String? = nil, distance: Double? = nil) -> CommandReply {

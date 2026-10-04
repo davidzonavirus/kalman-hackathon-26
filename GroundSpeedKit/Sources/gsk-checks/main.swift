@@ -4,6 +4,7 @@ var runner = CheckRunner()
 protocolChecks(&runner)
 filterChecks(&runner)
 flowChecks(&runner)
+heightChecks(&runner)
 
 // MARK: registerPhoneRuntimeChecks — Agent B's checks live in PhoneRuntimeChecks.swift.
 runner.section("PhoneRuntime")

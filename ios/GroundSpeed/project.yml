@@ -8,6 +8,18 @@ options:
 packages:
   GroundSpeedKit:
     path: ../../GroundSpeedKit
+schemes:
+  GroundSpeed:
+    build:
+      targets:
+        GroundSpeed: all
+    # Debug (-Onone) makes the per-pixel flow loops ~10× slower and drops camera frames.
+    run:
+      config: Release
+    profile:
+      config: Release
+    archive:
+      config: Release
 targets:
   GroundSpeed:
     type: application

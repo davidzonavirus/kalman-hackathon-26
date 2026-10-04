@@ -109,15 +109,45 @@ public final class PhaseCorrelator {
     public var cropSize: Int { n * downsample }
 
     /// Ingest an 8-bit luma plane (e.g. CVPixelBuffer plane 0 of a 420f/420v buffer).
-    /// Crops the centre `cropSize`² and box-downsamples. Returns nil for the first frame
-    /// or if the image is smaller than the crop.
-    public func ingest(lumaBase: UnsafeRawPointer, width: Int, height: Int, bytesPerRow: Int) -> FlowShift? {
-        let crop = cropSize
-        guard width >= crop, height >= crop else { return nil }
-        let x0 = (width - crop) / 2, y0 = (height - crop) / 2
+    /// Crops a `cropSize`² square centred `offsetX`/`offsetY` full-res px from the image centre
+    /// and box-downsamples. Returns nil for the first frame or if the crop leaves the image.
+    ///
+    /// `predictX`/`predictY` (full-res px): expected content motion since the previous frame.
+    /// The current frame is then also cropped at offset + prediction, so the correlation only
+    /// has to find the residual and the speed range is no longer limited to ±n/2 per frame
+    /// (only by the image size). The previous-frame reference is always the un-predicted
+    /// crop, so each frame's prediction is independent. The returned shift is the total.
+    public func ingest(lumaBase: UnsafeRawPointer, width: Int, height: Int, bytesPerRow: Int,
+                       offsetX: Int = 0, offsetY: Int = 0,
+                       predictX: Int = 0, predictY: Int = 0) -> FlowShift? {
+        let crop = cropSize, ds = downsample
+        let x0 = (width - crop) / 2 + offsetX, y0 = (height - crop) / 2 + offsetY
+        guard x0 >= 0, y0 >= 0, x0 + crop <= width, y0 + crop <= height else { return nil }
+        // Prediction in whole downsampled px, clamped so the crop stays inside the image.
+        let px = max(-x0, min(width - crop - x0, Int((Double(predictX) / Double(ds)).rounded()) * ds))
+        let py = max(-y0, min(height - crop - y0, Int((Double(predictY) / Double(ds)).rounded()) * ds))
+        let base = lumaBase.assumingMemoryBound(to: UInt8.self)
+        guard (px != 0 || py != 0) && hasPrev else {
+            loadPatch(base, bytesPerRow: bytesPerRow, x0: x0, y0: y0)
+            return process()
+        }
+        loadPatch(base, bytesPerRow: bytesPerRow, x0: x0 + px, y0: y0 + py)
+        forward()
+        let pdx = px / ds, pdy = py / ds
+        // A peak at total motion 0 is the static pattern (sensor noise, vignetting, lens dirt),
+        // which can outshine motion-blurred texture; mask it once the prediction is clear of it.
+        let mask: (Int, Int)? = abs(pdx) + abs(pdy) >= 4 ? (-pdx, -pdy) : nil
+        var shift = correlate(mask: mask)
+        shift.dx += Double(pdx); shift.dy += Double(pdy)
+        loadPatch(base, bytesPerRow: bytesPerRow, x0: x0, y0: y0)
+        forward()
+        storePrev()
+        return shift
+    }
+
+    private func loadPatch(_ base: UnsafePointer<UInt8>, bytesPerRow: Int, x0: Int, y0: Int) {
         let ds = downsample
         let scale = 1 / Float(ds * ds)
-        let base = lumaBase.assumingMemoryBound(to: UInt8.self)
         for r in 0..<n {
             let dst = patch + r * n
             for c in 0..<n { dst[c] = 0 }
@@ -132,7 +162,6 @@ public final class PhaseCorrelator {
             }
             for c in 0..<n { dst[c] *= scale }
         }
-        return process()
     }
 
     /// Ingest an already-downsampled N×N row-major float patch (any intensity scale).
@@ -145,8 +174,15 @@ public final class PhaseCorrelator {
     // MARK: - Core
 
     private func process() -> FlowShift? {
+        forward()
+        defer { storePrev() }
+        guard hasPrev else { return nil }
+        return correlate(mask: nil)
+    }
+
+    /// patch → zero-mean, Hann-windowed spectrum in curRe/curIm.
+    private func forward() {
         let len = vDSP_Length(count)
-        // Zero-mean, Hann window → curRe; curIm = 0.
         var mean: Float = 0
         vDSP_meanv(patch, 1, &mean, len)
         var negMean = -mean
@@ -155,15 +191,19 @@ public final class PhaseCorrelator {
         vDSP_vclr(curIm, 1, len)
         var cur = DSPSplitComplex(realp: curRe, imagp: curIm)
         vDSP_fft2d_zip(setup, &cur, 1, 0, log2n, log2n, FFTDirection(kFFTDirection_Forward))
+    }
 
-        defer {
-            // Current spectrum becomes previous.
-            prevRe.update(from: curRe, count: count)
-            prevIm.update(from: curIm, count: count)
-            hasPrev = true
-        }
-        guard hasPrev else { return nil }
+    private func storePrev() {
+        prevRe.update(from: curRe, count: count)
+        prevIm.update(from: curIm, count: count)
+        hasPrev = true
+    }
 
+    /// Correlates the current spectrum with the previous one. `mask` (downsampled px, wrapped)
+    /// suppresses a 5×5 neighbourhood of the surface before the peak search.
+    private func correlate(mask: (Int, Int)?) -> FlowShift {
+        let len = vDSP_Length(count)
+        var cur = DSPSplitComplex(realp: curRe, imagp: curIm)
         // X = F_cur · conj(F_prev)
         var prev = DSPSplitComplex(realp: prevRe, imagp: prevIm)
         var cross = DSPSplitComplex(realp: xRe, imagp: xIm)
@@ -182,6 +222,17 @@ public final class PhaseCorrelator {
         vDSP_vmul(xIm, 1, tmp, 1, xIm, 1, len)
         vDSP_fft2d_zip(setup, &cross, 1, 0, log2n, log2n, FFTDirection(kFFTDirection_Inverse))
         let surf = xRe   // real part = correlation surface (unnormalised, scale irrelevant)
+        func wrapDist(_ v: Int) -> Int { let w = ((v % n) + n) % n; return min(w, n - w) }
+        // Skip when the wrapped mask lands on the expected residual (≈ 0): at multiples of
+        // n·downsample of predicted motion the static and moving peaks coincide.
+        if let (mx, my) = mask, max(wrapDist(mx), wrapDist(my)) > 8 {
+            let mx = ((mx % n) + n) % n, my = ((my % n) + n) % n
+            var lo: Float = 0
+            vDSP_minv(surf, 1, &lo, len)
+            for dr in -2...2 { for dc in -2...2 {
+                surf[((my + dr + n) % n) * n + ((mx + dc + n) % n)] = lo
+            } }
+        }
 
         var peak: Float = 0
         var peakIdx: vDSP_Length = 0

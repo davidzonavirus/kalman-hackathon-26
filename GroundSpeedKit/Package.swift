@@ -23,6 +23,8 @@ let package = Package(
         .target(name: "PhoneRuntime", dependencies: ["SpeedProtocol", "KalmanCore", "OpticalFlow"]),
         .executableTarget(name: "gsk-checks", dependencies: ["SpeedProtocol", "KalmanCore", "OpticalFlow", "PhoneRuntime"]),
         .executableTarget(name: "kfreplay", dependencies: ["SpeedProtocol", "KalmanCore"]),
+        // Speed-range benchmark: PhaseCorrelator on a synthetic floor, shift sweep with motion blur
+        .executableTarget(name: "flowbench", dependencies: ["OpticalFlow"]),
         // Simulated phone using the REAL PhoneRuntime: streams to the dashboard, answers TCP commands
         .executableTarget(name: "phone-sim", dependencies: ["SpeedProtocol", "KalmanCore", "PhoneRuntime"]),
     ]

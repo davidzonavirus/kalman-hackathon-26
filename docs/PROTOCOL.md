@@ -104,3 +104,27 @@ the share sheet / AirDrop.
 Replay rule: feeding `imu.csv` (predict), `flow.csv`, `gnss.csv`, and ZUPT events in
 timestamp order through the filter must reproduce `est.csv` (that is how Swift and
 Python implementations are cross-checked to 1e-6 m/s).
+
+---
+
+## v2 frame (REPLACES v1 as the phone's default; dashboards must accept both)
+
+72 bytes, little-endian. Bytes 0–45 identical to v1 except `version = 2` and the meaning of
+`distance`, then:
+
+| Offset | Type | Field | Notes |
+|---|---|---|---|
+| 30 | f32 | distance | m, **total distance travelled** = ∫\|v\| dt since last zero/run start (stationary periods excluded) |
+| 46 | f32 | ax | m/s², vehicle frame, gravity removed, bias-corrected (as fed to the filter) |
+| 50 | f32 | ay | m/s² |
+| 54 | f32 | gz | rad/s yaw rate |
+| 58 | f32 | flow_vx | m/s, last raw flow measurement (vehicle frame, de-rotated) |
+| 62 | f32 | flow_vy | m/s |
+| 66 | f32 | net_forward | m, signed ∫v_x dt since last zero (displacement along the vehicle axis) |
+| 70 | u16 | crc | CRC-16/CCITT-FALSE over bytes 0..69 |
+
+JSON debug frame v2 adds keys `ax, ay, gz, flow_vx, flow_vy, net_forward` and `"version":2`.
+Speed `|v| = hypot(v_x, v_y)` is derived by receivers.
+
+New command: `{"cmd":"zero"}`: zero distance + net_forward and re-estimate IMU bias (phone
+must be still ~1 s). Reply `{"ok":true,"cmd":"zero"}`.

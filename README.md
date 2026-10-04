@@ -15,8 +15,11 @@ Kalman filter **on the phone**, streamed live to a MacBook dashboard.
 ## Quick start (no phone needed)
 
 ```bash
-cd dashboard && python3 -m gsdash          # dashboard → http://localhost:8080
+dashboard/run.sh          # stops any running gsdash first, then serves http://localhost:8080
 ```
+Always start it with `run.sh` (or `pkill -f "\-m gsdash"` first): a second copy fights the
+first over UDP 9000 and the phone's command link. The phone is found automatically over
+Bonjour, including on IPv6-only hotspots; `dashboard/run.sh --phone <ip>` overrides.
 ```bash
 cd GroundSpeedKit && swift run phone-sim --host 127.0.0.1   # simulated phone, real Swift pipeline
 ```

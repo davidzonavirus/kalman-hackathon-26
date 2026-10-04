@@ -144,12 +144,33 @@ func filterChecks(_ r: inout CheckRunner) {
     var dp = DistanceIntegrator(mode: .pathLength)
     for k in 0...500 { dp.add(t: Double(k) * 0.01, vx: 0.6, vy: 0.8) }
     r.near("DistanceIntegrator pathLength 1 m/s × 5 s = 5 m", dp.distance, 5.0, tol: 1e-9)
-    var di = DistanceIntegrator()
+    var di = DistanceIntegrator(mode: .forward)
     for k in 0...500 { di.add(t: Double(k) * 0.01, vx: 1.0, vy: 0.8) }
     r.near("DistanceIntegrator forward integrates v_x only", di.distance, 5.0, tol: 1e-9)
-    var dj = DistanceIntegrator()
+    var dd = DistanceIntegrator(deadband: 0.05)
+    for k in 0...1000 { dd.add(t: Double(k) * 0.01, vx: 0.03, vy: -0.02) }
+    r.check("DistanceIntegrator deadband: 3.6 cm/s creep for 10 s adds 0 [\(dd.distance)]", dd.distance == 0)
+    var dl = DistanceIntegrator(deadband: 0.05, smoothing: 0.5)
+    for k in 0...300 { dl.add(t: Double(k) * 0.01, vx: 1.0, vy: 0) }
+    r.check("DistanceIntegrator lead compensation: 1 m/s × 3 s reads ≈ 3 m mid-motion [plain \(dl.distance), lead \(dl.leadCompensated)]",
+            abs(dl.leadCompensated - 3.0) < 0.03 && dl.distance < 2.6)
+    var dj = DistanceIntegrator(mode: .forward)
     for k in 0...1000 { let t = Double(k) * 0.01; dj.add(t: t, vx: 0.4 * sin(2 * .pi * 3 * t), vy: 0.3 * cos(2 * .pi * 5 * t)) }
     r.check("DistanceIntegrator forward: jostling (±0.4 m/s, 3 Hz) nets ≈ 0 m [\(dj.distance)]", abs(dj.distance) < 0.01)
+    var wobRaw = DistanceIntegrator(deadband: 0.05)
+    var wobLP = DistanceIntegrator(deadband: 0.05, smoothing: 0.5)
+    for k in 0...1000 {
+        let t = Double(k) * 0.01
+        let (x, y) = (0.4 * sin(2 * .pi * 3 * t), 0.3 * cos(2 * .pi * 5 * t))
+        wobRaw.add(t: t, vx: x, vy: y); wobLP.add(t: t, vx: x, vy: y)
+    }
+    r.check("DistanceIntegrator smoothing: 10 s of wobble (±0.4 m/s, 3 Hz) adds < 0.15 m [raw \(wobRaw.distance), smoothed \(wobLP.distance)]",
+            wobLP.distance < 0.15)
+    var steadyLP = DistanceIntegrator(deadband: 0.05, smoothing: 0.5)
+    for k in 0...700 { let t = Double(k) * 0.01; steadyLP.add(t: t, vx: t <= 5 ? 1 : 0, vy: 0) }
+    r.near("DistanceIntegrator smoothing: 5 m push then 2 s still reads 5 m (deadband trims < 1% of the tail)", steadyLP.distance, 5.0, tol: 0.04)
+    di = DistanceIntegrator()
+    for k in 0...500 { di.add(t: Double(k) * 0.01, vx: 1, vy: 0) }
     di.reset()
     di.add(t: 5.01, vx: 1, vy: 0)
     r.near("DistanceIntegrator reset keeps integrating", di.distance, 0.01, tol: 1e-9)

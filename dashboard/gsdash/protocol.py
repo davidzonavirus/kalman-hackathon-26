@@ -1,4 +1,5 @@
-"""Wire protocol (docs/PROTOCOL.md): 48-byte binary frame, JSON debug frame, commands.
+"""Wire protocol (docs/PROTOCOL.md): v1 (48 B) and v2 (72 B) binary frames, JSON debug
+frames, commands.
 
 Standard library only.
 """
@@ -9,23 +10,34 @@ import math
 import struct
 
 MAGIC = 0xA5
-VERSION = 1
-FRAME_LEN = 48
+VERSION = 2                 # what the phone sends by default
+FRAME_LEN_V1 = 48
+FRAME_LEN_V2 = 72
+FRAME_LEN = FRAME_LEN_V1    # backwards-compatible alias
+FRAME_LENS = {1: FRAME_LEN_V1, 2: FRAME_LEN_V2}
 
 # < little-endian, no padding: magic u8, version u8, seq u32, t f64,
 # v_x v_y sigma_vx sigma_vy distance flow_quality h  (7 x f32), status u16,
-# battery u8, torch u8   -> 46 bytes, then crc u16.
-_BODY = struct.Struct("<BBIdfffffffHBB")
+# battery u8, torch u8   -> 46 bytes; v2 then adds 6 x f32 -> 70 bytes; then crc u16.
+_BODY_V1 = struct.Struct("<BBIdfffffffHBB")
+_BODY_V2 = struct.Struct("<BBIdfffffffHBBffffff")
+_BODY = _BODY_V1
 _CRC = struct.Struct("<H")
-assert _BODY.size == 46
+assert _BODY_V1.size == 46 and _BODY_V2.size == 70
 
-FIELDS = ("seq", "t", "v_x", "v_y", "sigma_vx", "sigma_vy", "distance",
-          "flow_quality", "h", "status", "battery", "torch")
+FIELDS_V1 = ("seq", "t", "v_x", "v_y", "sigma_vx", "sigma_vy", "distance",
+             "flow_quality", "h", "status", "battery", "torch")
+V2_EXTRA = ("ax", "ay", "gz", "flow_vx", "flow_vy", "net_forward")
+FIELDS_V2 = FIELDS_V1 + V2_EXTRA
+FIELDS = FIELDS_V1
+_FLOAT_FIELDS = ("t", "v_x", "v_y", "sigma_vx", "sigma_vy", "distance", "flow_quality",
+                 "h") + V2_EXTRA
 
-# est.csv header (PROTOCOL.md section 3) -- dashboard log appends seq, recv_time.
+# est.csv header (PROTOCOL.md section 3); the dashboard log adds the v2 columns
+# (empty for v1 frames) and seq, recv_time, version.
 EST_CSV_FIELDS = ("t", "v_x", "v_y", "sigma_vx", "sigma_vy", "distance", "status",
                   "flow_quality", "h")
-LOG_CSV_FIELDS = EST_CSV_FIELDS + ("seq", "recv_time")
+LOG_CSV_FIELDS = EST_CSV_FIELDS + V2_EXTRA + ("seq", "recv_time", "version")
 
 # Status bit flags
 IMU_OK = 1 << 0
@@ -48,7 +60,7 @@ STATUS_BITS = {
 }
 
 COMMANDS = ("ping", "start_run", "stop_run", "mark", "calibrate", "set_torch",
-            "reset_distance")
+            "reset_distance", "zero")
 
 
 class FrameError(ValueError):
@@ -75,39 +87,77 @@ def status_names(status: int) -> list[str]:
     return [name for name, bit in STATUS_BITS.items() if status & bit]
 
 
+def _pick_version(version, extra) -> int:
+    if version is None:
+        return 2 if any(v is not None for v in extra) else 1
+    if version not in (1, 2):
+        raise ValueError(f"unsupported version {version}")
+    return version
+
+
 def encode_frame(seq: int, t: float, v_x: float, v_y: float, sigma_vx: float,
                  sigma_vy: float, distance: float, flow_quality: float, h: float,
-                 status: int, battery: int = 0xFF, torch: int = 0) -> bytes:
-    """Encode the 48-byte binary frame (used by tests and the simulator)."""
-    body = _BODY.pack(MAGIC, VERSION, seq & 0xFFFFFFFF, t, v_x, v_y, sigma_vx, sigma_vy,
-                      distance, flow_quality, h, status & 0xFFFF, battery & 0xFF,
-                      torch & 0xFF)
+                 status: int, battery: int = 0xFF, torch: int = 0,
+                 ax: float | None = None, ay: float | None = None, gz: float | None = None,
+                 flow_vx: float | None = None, flow_vy: float | None = None,
+                 net_forward: float | None = None, version: int | None = None) -> bytes:
+    """Encode a binary frame (tests and the simulator).
+
+    version=None picks v2 when any v2 field is given, else v1 (48 B). Missing v2 fields
+    encode as 0.
+    """
+    extra = (ax, ay, gz, flow_vx, flow_vy, net_forward)
+    ver = _pick_version(version, extra)
+    common = (MAGIC, ver, seq & 0xFFFFFFFF, t, v_x, v_y, sigma_vx, sigma_vy, distance,
+              flow_quality, h, status & 0xFFFF, battery & 0xFF, torch & 0xFF)
+    if ver == 1:
+        body = _BODY_V1.pack(*common)
+    else:
+        body = _BODY_V2.pack(*common, *(0.0 if v is None else v for v in extra))
     return body + _CRC.pack(crc16_ccitt_false(body))
 
 
 def encode_json_frame(seq: int, t: float, v_x: float, v_y: float, sigma_vx: float,
                       sigma_vy: float, distance: float, flow_quality: float, h: float,
-                      status: int, battery: int = 0xFF, torch: int = 0) -> bytes:
+                      status: int, battery: int = 0xFF, torch: int = 0,
+                      ax: float | None = None, ay: float | None = None,
+                      gz: float | None = None, flow_vx: float | None = None,
+                      flow_vy: float | None = None, net_forward: float | None = None,
+                      version: int | None = None) -> bytes:
+    extra = (ax, ay, gz, flow_vx, flow_vy, net_forward)
+    ver = _pick_version(version, extra)
     obj = {"seq": seq & 0xFFFFFFFF, "t": t, "v_x": v_x, "v_y": v_y,
            "sigma_vx": sigma_vx, "sigma_vy": sigma_vy, "distance": distance,
            "flow_quality": flow_quality, "h": h, "status": status & 0xFFFF,
            "battery": battery, "torch": torch}
+    if ver == 2:
+        obj["version"] = 2
+        for k, v in zip(V2_EXTRA, extra):
+            obj[k] = 0.0 if v is None else v
     return json.dumps(obj, separators=(",", ":")).encode()
 
 
 def _decode_binary(data: bytes) -> dict:
-    if len(data) != FRAME_LEN:
-        raise FrameError(f"bad length {len(data)} (want {FRAME_LEN})")
+    if len(data) < 2:
+        raise FrameError(f"bad length {len(data)}")
     if data[0] != MAGIC:
         raise FrameError(f"bad magic 0x{data[0]:02X}")
-    if data[1] != VERSION:
-        raise FrameError(f"unsupported version {data[1]}")
-    (want,) = _CRC.unpack_from(data, 46)
-    got = crc16_ccitt_false(data[:46])
+    ver = data[1]
+    if ver not in FRAME_LENS:
+        raise FrameError(f"unsupported version {ver}")
+    want_len = FRAME_LENS[ver]
+    if len(data) != want_len:
+        raise FrameError(f"bad length {len(data)} for v{ver} (want {want_len})")
+    body = _BODY_V1 if ver == 1 else _BODY_V2
+    (want,) = _CRC.unpack_from(data, body.size)
+    got = crc16_ccitt_false(data[:body.size])
     if want != got:
         raise FrameError(f"crc mismatch: frame 0x{want:04X} computed 0x{got:04X}", "crc")
-    vals = _BODY.unpack_from(data, 0)[2:]
-    frame = dict(zip(FIELDS, vals))
+    vals = body.unpack_from(data, 0)[2:]
+    frame = dict(zip(FIELDS_V1 if ver == 1 else FIELDS_V2, vals))
+    if ver == 1:
+        frame.update({k: None for k in V2_EXTRA})
+    frame["version"] = ver
     frame["fmt"] = "bin"
     return frame
 
@@ -119,9 +169,15 @@ def _decode_json(data: bytes) -> dict:
         raise FrameError(f"bad json: {e}") from None
     if not isinstance(obj, dict):
         raise FrameError("json frame is not an object")
-    missing = [k for k in FIELDS if k not in obj]
+    ver = obj.get("version")
+    if ver is None:
+        ver = 2 if all(k in obj for k in V2_EXTRA) else 1
+    if ver not in (1, 2):
+        raise FrameError(f"unsupported version {ver!r}")
+    need = FIELDS_V1 if ver == 1 else FIELDS_V2
+    missing = [k for k in need if k not in obj]
     if missing:
-        raise FrameError(f"json frame missing keys: {','.join(missing)}")
+        raise FrameError(f"json v{ver} frame missing keys: {','.join(missing)}")
     try:
         frame = {
             "seq": int(obj["seq"]) & 0xFFFFFFFF,
@@ -132,23 +188,28 @@ def _decode_json(data: bytes) -> dict:
         }
         for k in ("v_x", "v_y", "sigma_vx", "sigma_vy", "distance", "flow_quality", "h"):
             frame[k] = float(obj[k])
+        for k in V2_EXTRA:
+            frame[k] = float(obj[k]) if ver == 2 and obj[k] is not None else None
     except (TypeError, ValueError) as e:
         raise FrameError(f"bad json field: {e}") from None
+    frame["version"] = ver
     frame["fmt"] = "json"
     return frame
 
 
 def decode_frame(data: bytes) -> dict:
-    """Decode a telemetry datagram (binary or JSON, auto-detected by first byte '{').
+    """Decode a telemetry datagram: v1/v2 binary, or JSON (first byte '{').
 
-    Returns a dict with keys FIELDS + 'fmt'. Raises FrameError.
+    Returns a dict with keys FIELDS_V2 + 'version' + 'fmt' (v2-only fields are None for
+    v1 frames). Raises FrameError.
     """
     if not data:
         raise FrameError("empty datagram")
     frame = _decode_json(data) if data[:1] == b"{" else _decode_binary(data)
     # NaN/inf are legal floats on the wire but break JSON for the browser.
-    for k in ("t", "v_x", "v_y", "sigma_vx", "sigma_vy", "distance", "flow_quality", "h"):
-        if not math.isfinite(frame[k]):
+    for k in _FLOAT_FIELDS:
+        v = frame.get(k)
+        if v is not None and not math.isfinite(v):
             frame[k] = None
     return frame
 

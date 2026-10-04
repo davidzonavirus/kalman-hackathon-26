@@ -87,6 +87,15 @@ class TestEndToEnd(unittest.TestCase):
         self.assertTrue(wait_for(lambda: self.dash.telem.last_frame["status"] & P.RECORDING))
         rep = self.post("/api/cmd", {"cmd": "set_torch", "level": 0.6})
         self.assertTrue(rep["ok"], rep)
+        # v2 telemetry by default, and zero resets distance + net_forward
+        f = self.dash.telem.last_frame
+        self.assertEqual((f["version"], f["fmt"]), (2, "bin"))
+        self.assertIsNotNone(f["net_forward"])
+        rep = self.post("/api/cmd", {"cmd": "zero"})
+        self.assertTrue(rep["ok"], rep)
+        self.assertEqual(rep["cmd"], "zero")
+        self.assertTrue(wait_for(lambda: self.dash.telem.last_frame["seq"] > f["seq"] + 2))
+        self.assertLess(abs(self.dash.telem.last_frame["net_forward"]), 0.2)
         rep = self.post("/api/cmd", {"cmd": "bogus"})
         self.assertFalse(rep["ok"])
         self.assertNotIn("local", rep)  # error came from the phone, not the transport
@@ -126,6 +135,9 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(rows[0], list(P.LOG_CSV_FIELDS))
         self.assertEqual(rows[0][:9], "t,v_x,v_y,sigma_vx,sigma_vy,distance,status,flow_quality,h".split(","))
         self.assertGreater(len(rows), 20)
+        hdr = rows[0]
+        self.assertEqual(rows[1][hdr.index("version")], "2")
+        self.assertNotEqual(rows[1][hdr.index("net_forward")], "")
 
     def test_no_phone_reply_is_local_error(self):
         self.tcp.shutdown()
@@ -146,7 +158,7 @@ class TestJsonAndLoss(unittest.TestCase):
         dash = server.Dashboard(args)
         dash.start()
         phone = sim.FakePhone("127.0.0.1", dash.udp_port, rate=200.0, json_mode=True,
-                              loss=0.2, seq_start=0xFFFFFFFF - 50)
+                              loss=0.2, seq_start=0xFFFFFFFF - 50, version=1)
         threading.Thread(target=phone.run, daemon=True).start()
         try:
             self.assertTrue(wait_for(lambda: dash.telem.seq.received >= 200, 8))
@@ -154,6 +166,8 @@ class TestJsonAndLoss(unittest.TestCase):
             time.sleep(0.1)
             st = dash.telem.stats()
             self.assertEqual(st["fmt"], "json")
+            self.assertEqual(dash.telem.last_frame["version"], 1)
+            self.assertIsNone(dash.telem.last_frame["net_forward"])
             self.assertEqual(st["seq_resets"], 0)          # crossed the u32 wrap cleanly
             # every drop the sim made between first and last received frame is a gap
             self.assertGreater(st["lost"], 0)

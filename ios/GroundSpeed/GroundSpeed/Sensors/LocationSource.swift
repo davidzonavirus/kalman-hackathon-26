@@ -46,11 +46,17 @@ final class LocationSource: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    private var lastFixDate = Date.distantPast
+
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         for loc in locations {
             horizontalAccuracy = loc.horizontalAccuracy
             speedAccuracy = loc.speedAccuracy
-            guard loc.speed >= 0 else { continue }
+            // Core Location replays cached fixes (on start and when the signal drops) and
+            // repeats the last fix with a new delivery; neither is a new speed measurement.
+            guard loc.timestamp > lastFixDate, -loc.timestamp.timeIntervalSinceNow < 2 else { continue }
+            lastFixDate = loc.timestamp
+            guard loc.speed >= 0, loc.speedAccuracy >= 0 else { continue }
             let course = loc.course >= 0 ? loc.course : -1
             onSample?(Clock.fromDate(loc.timestamp), loc.speed, loc.speedAccuracy, course)
         }

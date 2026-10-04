@@ -108,6 +108,27 @@ func flowChecks(_ r: inout CheckRunner) {
     r.check("luma path: image smaller than crop → nil",
             l1.withUnsafeBytes { pl.ingest(lumaBase: $0.baseAddress!, width: 200, height: 200, bytesPerRow: BPR) } == nil)
 
+    // Motion prediction: (−180, 30) full-res px is beyond the ±128 px window; with a fixed
+    // pattern on the sensor that would otherwise win at zero motion.
+    let PW = 720, PH = 360
+    let pDots = randomDots(9000, width: PW, height: PH, rng: &rng)
+    let fpn = (0..<(PW * PH)).map { _ in rng.gaussian(12) }
+    func pLuma(_ shift: (Double, Double)) -> [UInt8] {
+        let f = dotTexture(width: PW, height: PH, dots: pDots, sigma: 2.0, shift: shift)
+        return (0..<(PW * PH)).map { i in
+            UInt8(max(0, min(255, (40 + 150 * Double(f[i]) + fpn[i] + rng.gaussian(2)).rounded())))
+        }
+    }
+    let p1 = pLuma((0, 0)), p2 = pLuma((-180, 30))
+    let pp = PhaseCorrelator()
+    _ = p1.withUnsafeBytes { pp.ingest(lumaBase: $0.baseAddress!, width: PW, height: PH, bytesPerRow: PW) }
+    let sp = p2.withUnsafeBytes {
+        pp.ingest(lumaBase: $0.baseAddress!, width: PW, height: PH, bytesPerRow: PW, predictX: -170, predictY: 24)
+    }
+    r.check("prediction: (−180, 30) px with a ±10 px wrong guess → (−90, 15) within 0.2",
+            sp.map { abs($0.dx + 90) < 0.2 && abs($0.dy - 15) < 0.2 } ?? false,
+            sp.map { String(format: "dx=%.3f dy=%.3f psr=%.1f", $0.dx, $0.dy, $0.psr) } ?? "nil")
+
     // Timing (informational; debug builds are ~10× slower than release).
     let t0 = Date()
     for k in 0..<60 {

@@ -6,7 +6,7 @@ let goldenHex = "a5012a00000000000000004a93400000a03f8fc2f5bccdcc4c3d8fc2753d000
 func goldenFrame() -> TelemetryFrame {
     TelemetryFrame(seq: 42, t: 1234.5, vx: 1.25, vy: -0.03, sigmaVx: 0.05, sigmaVy: 0.06,
                    distance: 3.5, flowQuality: 12.0, h: 0.3, status: StatusFlags(rawValue: 0x0203),
-                   battery: 87, torch: 60)
+                   battery: 87, torch: 60, version: 1)
 }
 
 func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
@@ -24,6 +24,12 @@ func protocolChecks(_ r: inout CheckRunner) {
     let bin = f.encodeBinary()
     r.check("binary frame is 48 bytes", bin.count == 48, "\(bin.count)")
     r.check("binary frame matches docs/golden_frame.md", hex(bin) == goldenHex, hex(bin))
+    var f2 = f; f2.version = 2; f2.ax = 0.5; f2.ay = -0.25; f2.gz = 0.1; f2.flowVx = 1.2; f2.flowVy = -0.1; f2.netForward = 3.25
+    let bin2 = f2.encodeBinary()
+    r.check("v2 binary frame is 72 bytes", bin2.count == 72, "\(bin2.count)")
+    r.check("v2 binary roundtrip", (try? TelemetryFrame.decode(bin2)) == f2)
+    r.check("v2 JSON roundtrip", (try? TelemetryFrame.decode(f2.encodeJSON())) == f2)
+    r.check("v2 shares v1 prefix (bytes 2..45)", Array(bin2[2..<46]) == Array(bin[2..<46]))
     r.check("status flags 0x0203 = IMU_OK|FLOW_OK|FILTER_INIT",
             StatusFlags([.imuOK, .flowOK, .filterInit]).rawValue == 0x0203)
     r.check("calibrating is bit 10", StatusFlags.calibrating.rawValue == 1 << 10)

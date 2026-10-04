@@ -36,7 +36,7 @@ class Telemetry:
     """Shared state: recent frames ring buffer (with monotonically increasing index),
     link statistics, phone source address."""
 
-    RING = 2000
+    RING = 4000   # 80 s at 50 Hz: enough to backfill a reloaded page
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -186,7 +186,14 @@ class UDPReceiver(threading.Thread):
     def __init__(self, telem: Telemetry, logger: SessionLogger, host: str, port: int):
         super().__init__(daemon=True, name="udp-rx")
         self.telem, self.logger = telem, logger
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # iPhone hotspots on IPv6-only carriers give the laptop no 172.20.10.x address, so a
+        # wildcard bind listens dual-stack (IPv6 + IPv4-mapped).
+        if host in ("", "0.0.0.0", "::"):
+            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+            self.sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            host = "::"
+        else:
+            self.sock = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
         self.sock.bind((host, port))
@@ -198,6 +205,8 @@ class UDPReceiver(threading.Thread):
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(4096)
+                if addr[0].startswith("::ffff:"):
+                    addr = (addr[0][7:], addr[1])
             except socket.timeout:
                 continue
             except OSError:
@@ -220,6 +229,18 @@ class UDPReceiver(threading.Thread):
 
 # --------------------------------------------------------------------------- phone link
 
+def parse_browse(out: str) -> list[str]:
+    """Instance names from `dns-sd -B _groundspeed._tcp` output."""
+    names = []
+    for line in out.splitlines():
+        # "18:40:12.123  Add  3  14 local.  _groundspeed._tcp.  iPhone GroundSpeed"
+        # (before 10:00 the time has one hour digit and the line starts with a space)
+        m = re.match(r"\s*\S+\s+Add\s+\S+\s+\S+\s+\S+\s+_groundspeed\._tcp\.\s+(.+)$", line)
+        if m:
+            names.append(m.group(1).strip())
+    return names
+
+
 def bonjour_discover(timeout: float = 3.0) -> tuple[str, int] | None:
     """Best effort: dns-sd -B then -L, resolve host. Returns (ip, port) or None."""
     try:
@@ -232,13 +253,7 @@ def bonjour_discover(timeout: float = 3.0) -> tuple[str, int] | None:
     except subprocess.TimeoutExpired:
         p.kill()
         out, _ = p.communicate()
-    names = []
-    for line in out.splitlines():
-        # "18:40:12.123  Add  3  14 local.  _groundspeed._tcp.  iPhone GroundSpeed"
-        m = re.match(r"\S+\s+Add\s+\S+\s+\S+\s+\S+\s+_groundspeed\._tcp\.\s+(.+)$", line)
-        if m:
-            names.append(m.group(1).strip())
-    for name in names:
+    for name in parse_browse(out):
         try:
             p = subprocess.Popen(["dns-sd", "-L", name, "_groundspeed._tcp", "local."],
                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -254,11 +269,24 @@ def bonjour_discover(timeout: float = 3.0) -> tuple[str, int] | None:
             continue
         host, port = m.group(1), int(m.group(2))
         try:
-            infos = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
-            if infos:
-                return infos[0][4][0], port
+            infos = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
         except OSError:
             continue
+        # IPv6-only carrier hotspots advertise 172.20.10.1 but give the laptop no IPv4
+        # route to it, so return the first address that actually accepts a connection.
+        # Link-local addresses are skipped: the phone drops the %scope when it adopts the
+        # peer as its UDP destination.
+        for family, _, _, _, sa in infos:
+            ip = sa[0]
+            if ip.startswith(("fe80", "169.254.")):
+                continue
+            try:
+                with socket.socket(family, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.7)
+                    s.connect(sa)
+                return ip, port
+            except OSError:
+                continue
     return None
 
 
@@ -281,6 +309,7 @@ class PhoneLink:
         self.bonjour_result = None     # (ip, port)
         self._bonjour_running = False
         self._last_bonjour = 0.0
+        self._connect_fails = 0
         self.lock = threading.Lock()   # serialises request/reply
         self.sock = None
         self.rfile = None
@@ -291,11 +320,17 @@ class PhoneLink:
         self._last_traffic = 0.0
         threading.Thread(target=self._keepalive, daemon=True, name="phone-keepalive").start()
 
+    # A UDP source this old is no longer trusted: the phone may have a new address (hotspot
+    # reconnect, app restart) and keeps sending to the old laptop address until reconnected.
+    UDP_SOURCE_MAX_AGE_S = 3.0
+    # After this many consecutive failed connects to a Bonjour address, discover again.
+    MAX_BONJOUR_FAILS = 3
+
     def target(self) -> tuple[str, int, str] | None:
         if self.explicit_ip:
             return self.explicit_ip, self.port, "manual"
-        src = self.telem.source_ip
-        if src:
+        src, seen = self.telem.source_ip, self.telem.last_recv
+        if src and seen is not None and time.time() - seen < self.UDP_SOURCE_MAX_AGE_S:
             return src, self.port, "udp-source"
         if self.bonjour_result:
             return self.bonjour_result[0], self.bonjour_result[1], "bonjour"
@@ -333,6 +368,8 @@ class PhoneLink:
 
     def _roundtrip(self, req: dict) -> dict:
         self._connect()
+        # measure_height replies only after ~2–5 s of LiDAR capture on the phone.
+        self.sock.settimeout(10.0 if req.get("cmd") == "measure_height" else 3.0)
         self.sock.sendall((json.dumps(req, separators=(",", ":")) + "\n").encode())
         line = self.rfile.readline(65536)
         if not line:
@@ -346,6 +383,7 @@ class PhoneLink:
             for attempt in (0, 1):
                 try:
                     reply = self._roundtrip(req)
+                    self._connect_fails = 0
                     self.last_ok = time.time()
                     self._last_traffic = time.time()
                     self.last_error = ""
@@ -354,6 +392,14 @@ class PhoneLink:
                     err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
                     self.last_error = err
                     self._close()
+                    tgt = self.target()
+                    if tgt and tgt[2] == "bonjour":
+                        self._connect_fails += 1
+                        if self._connect_fails >= self.MAX_BONJOUR_FAILS:
+                            log(f"phone not reachable at {tgt[0]}; rediscovering")
+                            self.bonjour_result = None
+                            self._connect_fails = 0
+                            self._last_bonjour = 0.0
                     if isinstance(e, (socket.timeout, TimeoutError)) or attempt == 1 \
                             or self.target() is None:
                         break
@@ -539,10 +585,15 @@ def _make_handler(dash: Dashboard):
             last_stats = 0.0
             try:
                 self.wfile.write(b"retry: 1000\n\n")
-                # backfill the last 20 s so a reloaded page has a full plot
+                # backfill recent frames (?history=seconds, default 60) so a reloaded page has charts
                 now = time.time()
-                hist, _ = telem.frames_since(max(0, idx - 1500))
-                hist = [f for f in hist if now - f["recv_time"] <= 20.0]
+                try:
+                    q = dict(p.split("=", 1) for p in self.path.split("?", 1)[1].split("&") if "=" in p)
+                    hist_s = min(max(float(q.get("history", 60)), 0.0), 80.0)
+                except (IndexError, ValueError):
+                    hist_s = 60.0
+                hist, _ = telem.frames_since(0)
+                hist = [f for f in hist if now - f["recv_time"] <= hist_s]
                 self.wfile.write(b"event: history\ndata: " + json.dumps(
                     {"now": now, "frames": hist}, separators=(",", ":")).encode() + b"\n\n")
                 while True:

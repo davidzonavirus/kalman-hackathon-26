@@ -1,11 +1,12 @@
 """Fake phone for testing the dashboard without the iOS app.
 
-    python3 -m gsdash.sim [--host 127.0.0.1] [--json] [--loss 0.05]
+    python3 -m gsdash.sim [--host 127.0.0.1] [--json] [--v1] [--loss 0.05]
 
-Streams 50 Hz telemetry of a looping 10 m rest-to-rest run (with a 2 s "lens covered"
-segment: FLOW_OK off, sigma growing) to UDP host:9000 and serves the TCP 9001 command
-protocol. Like the real phone, it adopts the IP of a TCP command client as its UDP
-destination.
+Streams 50 Hz v2 telemetry (or v1 with --v1) of a looping 10 m rest-to-rest push that
+alternates forward and backward, so total distance grows while net_forward returns to ~0.
+Each push has a 2 s "lens covered" segment (FLOW_OK off, sigma growing). Serves the
+TCP 9001 command protocol, including "zero". Like the real phone, it adopts the IP of a
+TCP command client as its UDP destination.
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ EST_SCALE = 1.008     # simulated estimator bias -> ~0.8 % distance error
 
 class FakePhone:
     def __init__(self, host, port, rate=50.0, json_mode=False, loss=0.0, seed=1,
-                 seq_start=0):
+                 seq_start=0, version=2):
         self.dest = (host, port)
         self.rate = rate
         self.json_mode = json_mode
@@ -41,12 +42,14 @@ class FakePhone:
         self.rng = random.Random(seed)
         self.lock = threading.Lock()
         self.seq = seq_start & 0xFFFFFFFF
+        self.version = version
         self.distance = 0.0
+        self.net_forward = 0.0
+        self._last_flow = (0.0, 0.0)
         self.recording = False
         self.run_id = None
         self.torch = 0.0
         self.calib_until = 0.0
-        self._prev_tc = 0.0
         self.sent = 0
         self.dropped = 0
         self.running = True
@@ -54,16 +57,21 @@ class FakePhone:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # ---- motion model
-    def truth(self, tc):
-        """True forward speed at cycle time tc."""
+    def truth(self, t):
+        """True forward speed and acceleration at time t. Odd cycles drive backwards, so
+        net_forward returns to ~0 while total distance keeps growing."""
+        tc = t % CYCLE
+        direction = 1.0 if int(t // CYCLE) % 2 == 0 else -1.0
         tr = tc - REST_BEFORE
         if 0.0 <= tr <= RUN_T:
-            return VMAX * 0.5 * (1.0 - math.cos(2 * math.pi * tr / RUN_T)), tr
-        return 0.0, tr
+            w = 2 * math.pi / RUN_T
+            v = direction * VMAX * 0.5 * (1.0 - math.cos(w * tr))
+            a = direction * VMAX * 0.5 * w * math.sin(w * tr)
+            return v, a, tr, direction
+        return 0.0, 0.0, tr, direction
 
     def step(self, t, dt):
-        tc = t % CYCLE
-        v_true, tr = self.truth(tc)
+        v_true, a_true, tr, direction = self.truth(t)
         covered = COVER_START <= tr < COVER_START + COVER_LEN
         moving = 0.0 <= tr <= RUN_T
         n = self.rng.gauss
@@ -71,32 +79,37 @@ class FakePhone:
             k = tr - COVER_START
             sx = 0.02 + 0.12 * k + 0.05 * k * k
             sy = 0.015 + 0.08 * k + 0.03 * k * k
-            vx = v_true * EST_SCALE + 0.04 * k * k + n(0, 0.01)
+            vx = v_true * EST_SCALE + direction * 0.04 * k * k + n(0, 0.01)
             vy = 0.02 * k + n(0, 0.01)
             fq = 0.0
         else:
-            sx, sy = 0.02 + n(0, 0.001), 0.015 + n(0, 0.001)
-            sx, sy = abs(sx), abs(sy)
+            sx, sy = abs(0.02 + n(0, 0.001)), abs(0.015 + n(0, 0.001))
             vx = v_true * EST_SCALE + n(0, 0.008)
             vy = n(0, 0.006)
             fq = max(0.0, 12.0 + n(0, 1.5)) if moving else max(0.0, 9.0 + n(0, 1.0))
         if not moving:
             vx, vy = n(0, 0.002), n(0, 0.002)
+        ax = a_true + n(0, 0.04)
+        ay = n(0, 0.03)
+        gz = n(0, 0.01)
+        if covered:
+            fvx, fvy = self._last_flow
+        else:
+            fvx, fvy = v_true + n(0, 0.03), n(0, 0.02)
+            self._last_flow = (fvx, fvy)
         status = P.IMU_OK | P.LIDAR_OK | P.FILTER_INIT
         if not covered:
             status |= P.FLOW_OK
         if covered and int(tr * 10) % 4 == 0:
             status |= P.FLOW_GATED
-        if moving and v_true > 0.6 and int(t) % 3 != 0:
+        if moving and abs(v_true) > 0.6 and int(t) % 3 != 0:
             status |= P.GNSS_OK
         if not moving:
             status |= P.ZUPT
         with self.lock:
-            wrapped = tc < self._prev_tc
-            self._prev_tc = tc
-            if wrapped and not self.recording:
-                self.distance = 0.0   # new demo cycle starts from 0 unless a run is open
-            self.distance += math.hypot(vx, vy) * dt if moving else 0.0
+            if moving:   # total distance excludes stationary periods
+                self.distance += math.hypot(vx, vy) * dt
+            self.net_forward += vx * dt
             if self.recording:
                 status |= P.RECORDING
             if self.torch > 0:
@@ -109,6 +122,11 @@ class FakePhone:
                           distance=self.distance, flow_quality=fq,
                           h=0.30 + n(0, 0.0005), status=status,
                           battery=max(0, 87 - int(t / 120)), torch=int(round(self.torch * 100)))
+            if self.version == 2:
+                fields.update(ax=ax, ay=ay, gz=gz, flow_vx=fvx, flow_vy=fvy,
+                              net_forward=self.net_forward, version=2)
+            else:
+                fields["version"] = 1
             dest = self.dest
         enc = P.encode_json_frame if self.json_mode else P.encode_frame
         data = enc(**fields)
@@ -149,7 +167,8 @@ class FakePhone:
                     return {"ok": False, "cmd": cmd, "error": "already recording"}
                 label = req.get("label")
                 rid = time.strftime("%Y-%m-%d_%H-%M-%S") + (f"_{label}" if label else "")
-                self.recording, self.run_id, self.distance = True, rid, 0.0
+                self.recording, self.run_id = True, rid
+                self.distance = self.net_forward = 0.0
                 return {"ok": True, "cmd": cmd, "run": rid}
             if cmd == "stop_run":
                 if not self.recording:
@@ -173,6 +192,9 @@ class FakePhone:
                 return {"ok": True, "cmd": cmd, "level": lvl}
             if cmd == "reset_distance":
                 self.distance = 0.0
+                return {"ok": True, "cmd": cmd}
+            if cmd == "zero":
+                self.distance = self.net_forward = 0.0
                 return {"ok": True, "cmd": cmd}
         return {"ok": False, "cmd": cmd if isinstance(cmd, str) else "?",
                 "error": f"unknown cmd {cmd!r}"}
@@ -217,16 +239,18 @@ def main(argv=None):
     ap.add_argument("--cmd-host", default="0.0.0.0")
     ap.add_argument("--rate", type=float, default=50.0)
     ap.add_argument("--json", action="store_true", help="send JSON debug frames")
+    ap.add_argument("--v1", action="store_true", help="send v1 (48-byte) frames instead of v2")
     ap.add_argument("--loss", type=float, default=0.0, help="drop probability 0..1")
     ap.add_argument("--seq-start", type=int, default=0,
                     help="initial seq (e.g. 4294967000 to test u32 wrap)")
     ap.add_argument("--no-adopt", action="store_true",
                     help="keep UDP destination even when a command client connects")
     a = ap.parse_args(argv)
-    phone = FakePhone(a.host, a.port, a.rate, a.json, a.loss, seq_start=a.seq_start)
+    phone = FakePhone(a.host, a.port, a.rate, a.json, a.loss, seq_start=a.seq_start,
+                      version=1 if a.v1 else 2)
     srv = make_tcp_server(phone, a.cmd_host, a.cmd_port, adopt_peer=not a.no_adopt)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    print(f"[sim] {'JSON' if a.json else 'binary'} frames @ {a.rate:g} Hz -> "
+    print(f"[sim] v{phone.version} {'JSON' if a.json else 'binary'} frames @ {a.rate:g} Hz -> "
           f"{a.host}:{a.port}; commands on TCP {a.cmd_port}; loss {a.loss:g}",
           file=sys.stderr)
     th = threading.Thread(target=phone.run, daemon=True)

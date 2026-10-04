@@ -29,7 +29,7 @@
 		5004DDD2942E4094A57C1F3D /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		6A849AA05067681AEFC07F75 /* GroundSpeedApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundSpeedApp.swift; sourceTree = "<group>"; };
 		858F019397730C22D2A7DC07 /* ConsoleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSheet.swift; sourceTree = "<group>"; };
-		867086EC743A966500ED567A /* GroundSpeed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GroundSpeed.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		867086EC743A966500ED567A /* GroundSpeed.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GroundSpeed.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		88B3C3CCEB184667BC479722 /* GroundSpeedKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GroundSpeedKit; path = ../../GroundSpeedKit; sourceTree = SOURCE_ROOT; };
 		8AE68459A519C1CA9FFB3284 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8C44E7C0ECDBE25B6EE88E78 /* MotionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSource.swift; sourceTree = "<group>"; };
@@ -148,6 +148,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					5E9B1C2C0D0796EA2498BC6B = {
+						DevelopmentTeam = D9324GTY2Z;
 						ProvisioningStyle = Automatic;
 					};
 				};

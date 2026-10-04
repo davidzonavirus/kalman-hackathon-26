@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 dashboard/logs/
 .DS_Store
+.build-ios/
+device_data/

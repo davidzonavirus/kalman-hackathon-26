@@ -11,13 +11,18 @@ public enum TelemetryDecodeError: Error, Sendable, Equatable {
 
 /// One telemetry sample, phone → dashboard (PROTOCOL.md §1).
 ///
-/// Binary layout: 48 bytes little-endian, see `encodeBinary()`. Floating fields are
+/// Binary layout: v1 = 48 bytes, v2 = 72 bytes (adds accel, yaw rate, raw flow, net forward)
+/// little-endian, see `encodeBinary()`. `version` selects what is encoded; decode accepts both. Floating fields are
 /// stored as `Double`/`Float` in Swift exactly matching their wire width so an
 /// encode→decode roundtrip is bit-exact.
 public struct TelemetryFrame: Sendable, Equatable, Codable {
     public static let magic: UInt8 = 0xA5
-    public static let version: UInt8 = 1
-    public static let binarySize = 48
+    /// Default (latest) wire version.
+    public static let currentVersion: UInt8 = 2
+    public static let binarySizeV1 = 48
+    public static let binarySizeV2 = 72
+
+    public var version: UInt8
 
     public var seq: UInt32
     public var t: Double
@@ -33,15 +38,30 @@ public struct TelemetryFrame: Sendable, Equatable, Codable {
     public var battery: UInt8
     /// Torch level ×100 (0–100).
     public var torch: UInt8
+    // v2 fields (0 in decoded v1 frames)
+    public var ax: Float
+    public var ay: Float
+    public var gz: Float
+    public var flowVx: Float
+    public var flowVy: Float
+    public var netForward: Float
+
+    public var binarySize: Int { version == 1 ? Self.binarySizeV1 : Self.binarySizeV2 }
 
     public init(seq: UInt32 = 0, t: Double = 0, vx: Float = 0, vy: Float = 0,
                 sigmaVx: Float = 0, sigmaVy: Float = 0, distance: Float = 0,
                 flowQuality: Float = 0, h: Float = 0, status: StatusFlags = [],
-                battery: UInt8 = 0xFF, torch: UInt8 = 0) {
+                battery: UInt8 = 0xFF, torch: UInt8 = 0,
+                ax: Float = 0, ay: Float = 0, gz: Float = 0,
+                flowVx: Float = 0, flowVy: Float = 0, netForward: Float = 0,
+                version: UInt8 = TelemetryFrame.currentVersion) {
         self.seq = seq; self.t = t; self.vx = vx; self.vy = vy
         self.sigmaVx = sigmaVx; self.sigmaVy = sigmaVy; self.distance = distance
         self.flowQuality = flowQuality; self.h = h; self.status = status
         self.battery = battery; self.torch = torch
+        self.ax = ax; self.ay = ay; self.gz = gz
+        self.flowVx = flowVx; self.flowVy = flowVy; self.netForward = netForward
+        self.version = version
     }
 
     enum CodingKeys: String, CodingKey {
@@ -51,6 +71,7 @@ public struct TelemetryFrame: Sendable, Equatable, Codable {
         case distance
         case flowQuality = "flow_quality"
         case h, status, battery, torch
+        case version, ax, ay, gz, flowVx = "flow_vx", flowVy = "flow_vy", netForward = "net_forward"
     }
 
     public init(from decoder: Decoder) throws {
@@ -67,6 +88,13 @@ public struct TelemetryFrame: Sendable, Equatable, Codable {
         status = StatusFlags(rawValue: try c.decode(UInt16.self, forKey: .status))
         battery = try c.decode(UInt8.self, forKey: .battery)
         torch = try c.decode(UInt8.self, forKey: .torch)
+        version = try c.decodeIfPresent(UInt8.self, forKey: .version) ?? 1
+        ax = try c.decodeIfPresent(Float.self, forKey: .ax) ?? 0
+        ay = try c.decodeIfPresent(Float.self, forKey: .ay) ?? 0
+        gz = try c.decodeIfPresent(Float.self, forKey: .gz) ?? 0
+        flowVx = try c.decodeIfPresent(Float.self, forKey: .flowVx) ?? 0
+        flowVy = try c.decodeIfPresent(Float.self, forKey: .flowVy) ?? 0
+        netForward = try c.decodeIfPresent(Float.self, forKey: .netForward) ?? 0
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -83,24 +111,36 @@ public struct TelemetryFrame: Sendable, Equatable, Codable {
         try c.encode(status.rawValue, forKey: .status)
         try c.encode(battery, forKey: .battery)
         try c.encode(torch, forKey: .torch)
+        guard version >= 2 else { return }   // v1 JSON keeps exactly the v1 key set
+        try c.encode(version, forKey: .version)
+        try c.encode(ax, forKey: .ax)
+        try c.encode(ay, forKey: .ay)
+        try c.encode(gz, forKey: .gz)
+        try c.encode(flowVx, forKey: .flowVx)
+        try c.encode(flowVy, forKey: .flowVy)
+        try c.encode(netForward, forKey: .netForward)
     }
 
     // MARK: Binary
 
-    /// Exactly 48 bytes, little-endian, CRC-16/CCITT-FALSE over bytes 0..45 at offset 46.
+    /// v1: 48 bytes, CRC over 0..45 at 46. v2: 72 bytes, bytes 0..45 as v1, then
+    /// ax, ay, gz, flow_vx, flow_vy, net_forward (f32) and CRC over 0..69 at 70.
     public func encodeBinary() -> Data {
         var b = [UInt8]()
-        b.reserveCapacity(Self.binarySize)
+        b.reserveCapacity(binarySize)
         b.append(Self.magic)
-        b.append(Self.version)
+        b.append(version == 1 ? 1 : 2)
         Self.put(seq, &b)
         Self.put(t.bitPattern, &b)
         for f in [vx, vy, sigmaVx, sigmaVy, distance, flowQuality, h] { Self.put(f.bitPattern, &b) }
         Self.put(status.rawValue, &b)
         b.append(battery)
         b.append(torch)
+        if version >= 2 {
+            for f in [ax, ay, gz, flowVx, flowVy, netForward] { Self.put(f.bitPattern, &b) }
+        }
         Self.put(CRC16.ccittFalse(b), &b)
-        assert(b.count == Self.binarySize)
+        assert(b.count == binarySize)
         return Data(b)
     }
 
@@ -120,18 +160,30 @@ public struct TelemetryFrame: Sendable, Equatable, Codable {
             catch { throw TelemetryDecodeError.badJSON(String(describing: error)) }
         }
         let b = [UInt8](data)
-        guard b.count == binarySize else { throw TelemetryDecodeError.badLength(b.count) }
+        guard b.count >= 2 else { throw TelemetryDecodeError.badLength(b.count) }
         guard b[0] == magic else { throw TelemetryDecodeError.badMagic(b[0]) }
-        guard b[1] == version else { throw TelemetryDecodeError.badVersion(b[1]) }
-        let expected = CRC16.ccittFalse(b[0..<46])
-        let got: UInt16 = get(b, 46)
+        let ver = b[1]
+        let size: Int
+        switch ver {
+        case 1: size = binarySizeV1
+        case 2: size = binarySizeV2
+        default: throw TelemetryDecodeError.badVersion(ver)
+        }
+        guard b.count == size else { throw TelemetryDecodeError.badLength(b.count) }
+        let expected = CRC16.ccittFalse(b[0..<(size - 2)])
+        let got: UInt16 = get(b, size - 2)
         guard expected == got else { throw TelemetryDecodeError.badCRC(expected: expected, got: got) }
         func f(_ o: Int) -> Float { Float(bitPattern: get(b, o)) }
-        return TelemetryFrame(
+        var fr = TelemetryFrame(
             seq: get(b, 2), t: Double(bitPattern: get(b, 6)),
             vx: f(14), vy: f(18), sigmaVx: f(22), sigmaVy: f(26),
             distance: f(30), flowQuality: f(34), h: f(38),
-            status: StatusFlags(rawValue: get(b, 42)), battery: b[44], torch: b[45])
+            status: StatusFlags(rawValue: get(b, 42)), battery: b[44], torch: b[45], version: ver)
+        if ver >= 2 {
+            fr.ax = f(46); fr.ay = f(50); fr.gz = f(54)
+            fr.flowVx = f(58); fr.flowVy = f(62); fr.netForward = f(66)
+        }
+        return fr
     }
 
     // MARK: LE helpers

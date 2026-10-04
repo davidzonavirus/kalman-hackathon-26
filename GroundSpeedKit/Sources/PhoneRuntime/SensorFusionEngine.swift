@@ -11,7 +11,10 @@ public struct FusionSnapshot: Sendable, Equatable {
     public var sigmaVy: Double = 0
     public var bx: Double = 0
     public var by: Double = 0
+    /// Total distance travelled (∫|v|, deadband) since zero / run start, m.
     public var distance: Double = 0
+    /// Net signed displacement along vehicle x (∫v_x) since zero / run start, m.
+    public var netForward: Double = 0
     public var flowQuality: Double = 0
     /// Camera height currently used (LiDAR if fresh, else manual), m.
     public var h: Double = 0
@@ -65,8 +68,12 @@ public final class SensorFusionEngine: @unchecked Sendable {
         /// Reorder latency (s).
         public var reorderLatency: Double = 0.05
         public var zuptEnabled: Bool = true
-        /// When flow is stale, ZUPT additionally requires |v̂| below this (m/s).
+        /// When flow is stale, ZUPT additionally requires |v̂| below this (m/s)...
         public var zuptMaxSpeedWithoutFlow: Double = 0.1
+        /// ...until flow has been gone this long (s). After that a still IMU always zeroes v̂:
+        /// IMU-only velocity drifts without bound (seen: 0.9 m/s after 30 s, 5.8 m/s after
+        /// 4 min with the phone at rest), so it must not block its own correction.
+        public var zuptAnySpeedAfterFlowLoss: Double = 2.0
         /// Duration of the calibrate command's averaging window (s).
         public var calibrationDuration: Double = 2.0
         /// Remove rotation-induced image motion from flow using the gyro:
@@ -77,6 +84,8 @@ public final class SensorFusionEngine: @unchecked Sendable {
         /// makes jostling read worse. flow.csv logs the CORRECTED velocity (what the filter used).
         public var flowDerotation: Bool = true
         public var flowDerotationSign: Double = 1
+        /// Fraction of h·|ω| left after de-rotation, added as flow noise (0 = off).
+        public var wobbleResidual: Double = 0.5
         public init() {}
     }
 
@@ -105,7 +114,13 @@ public final class SensorFusionEngine: @unchecked Sendable {
 
     private var pending: [Sample] = []
     private var filter: any GroundSpeedFilter
-    private var distance = DistanceIntegrator()
+    /// Speeds below this don't add to the total (filter noise at rest must not creep).
+    public static let distanceDeadband = 0.05
+    /// Low-pass τ (s) on velocity before ∫|v|, so phone wobble doesn't add distance.
+    public static let distanceSmoothing = 0.5
+    private var distance = DistanceIntegrator(deadband: SensorFusionEngine.distanceDeadband,
+                                              smoothing: SensorFusionEngine.distanceSmoothing)
+    private var netForward = DistanceIntegrator(mode: .forward)
     private var zupt = ZuptDetector()
     private var settings = Settings()
     private var needsReset = true
@@ -121,6 +136,8 @@ public final class SensorFusionEngine: @unchecked Sendable {
     private var lastGyro = (x: 0.0, y: 0.0)
     private var lastFlowGoodT = -Double.infinity
     private var lastFlowQuality = 0.0
+    /// Height the flow source used (tracks ride height between LiDAR fixes).
+    private var lastFlowH = 0.0
     private var lastFlowAccepted = false
     private var lastFlowGated = false
     private var lastGNSST = -Double.infinity
@@ -131,6 +148,7 @@ public final class SensorFusionEngine: @unchecked Sendable {
     private var lastZuptT = -Double.infinity
     private var pendingZuptT: Double?
     private var torchOn = false
+    private var holdStill = false
     private var imuRate = RateMeter()
     private var flowRate = RateMeter()
 
@@ -140,6 +158,10 @@ public final class SensorFusionEngine: @unchecked Sendable {
     private var calibSum = [Double](repeating: 0, count: 6)
     private var calibN = 0
     private var bias = [Double](repeating: 0, count: 6)   // ax, ay, az, gx, gy, gz
+    private var calibSumSq = [Double](repeating: 0, count: 6)
+    /// Max accel std (m/s²) over the calibration window; above this the phone was moving.
+    /// Measured: phone resting still ~0.01, phone being handled ~0.07.
+    public static let calibrationMaxAccStd = 0.04
 
     private var snap = FusionSnapshot()
 
@@ -206,23 +228,27 @@ public final class SensorFusionEngine: @unchecked Sendable {
     public func resetDistance() {
         queue.async {
             self.distance.reset()
+            self.netForward.reset()
             self.snap.distance = 0
-            self.lock.withLock { self._latest.distance = 0 }
+            self.snap.netForward = 0
+            self.lock.withLock { self._latest.distance = 0; self._latest.netForward = 0 }
             self.recorder?.recordEvent(t: self.eventTime(), event: CSVSchema.Event.resetDistance)
         }
     }
 
-    /// Averages IMU for `settings.calibrationDuration` s (cart must be still) and removes
+    /// Averages raw IMU for `settings.calibrationDuration` s (cart must be still) and removes
     /// that bias from subsequent samples (the logged imu.csv is bias-corrected, so replay
-    /// needs no knowledge of it). The filter is not reset (that would break replay).
+    /// needs no knowledge of it). The old bias stays applied during the window and a still
+    /// IMU gets ZUPTs, so zeroing never lets velocity drift. The filter is not reset (that
+    /// would break replay).
     public func calibrate() {
         queue.async {
             self.calibrating = true
             self.calibEnd = self.lastIMUT + self.settings.calibrationDuration
             if !self.calibEnd.isFinite { self.calibEnd = -Double.infinity }
             self.calibSum = [Double](repeating: 0, count: 6)
+            self.calibSumSq = [Double](repeating: 0, count: 6)
             self.calibN = 0
-            self.bias = [Double](repeating: 0, count: 6)
             self.recorder?.recordEvent(t: self.eventTime(), event: CSVSchema.Event.calibrate, value: "begin")
         }
     }
@@ -231,6 +257,16 @@ public final class SensorFusionEngine: @unchecked Sendable {
         queue.async {
             self.calibrating = false
             self.bias = [Double](repeating: 0, count: 6)
+        }
+    }
+
+    /// While on, every IMU step applies a ZUPT (logged as usual, so replay matches). Used
+    /// while the flow camera is paused for a LiDAR height measurement: the cart is still by
+    /// definition, and IMU-only dead-reckoning would otherwise drift for seconds.
+    public func setHoldStill(_ on: Bool) {
+        queue.async {
+            self.holdStill = on
+            self.recorder?.recordEvent(t: self.eventTime(), event: "hold_still", value: on ? "on" : "off")
         }
     }
 
@@ -371,13 +407,21 @@ public final class SensorFusionEngine: @unchecked Sendable {
             var raw = [s.a, s.b, s.c, s.d, s.e, s.f]
             if calibrating {
                 if !calibEnd.isFinite { calibEnd = t + settings.calibrationDuration }
-                for k in 0..<6 { calibSum[k] += raw[k] }
+                for k in 0..<6 { calibSum[k] += raw[k]; calibSumSq[k] += raw[k] * raw[k] }
                 calibN += 1
                 if t >= calibEnd, calibN > 0 {
-                    bias = calibSum.map { $0 / Double(calibN) }
+                    let n = Double(calibN)
+                    let mean = calibSum.map { $0 / n }
+                    let accStd = (0..<3).map { max(0, calibSumSq[$0] / n - mean[$0] * mean[$0]).squareRoot() }.max() ?? 0
                     calibrating = false
-                    rec?.recordEvent(t: t, event: CSVSchema.Event.calibrate,
-                                     value: "end bias_ax=\(CSVRow.real(bias[0])) bias_ay=\(CSVRow.real(bias[1])) bias_gz=\(CSVRow.real(bias[5]))")
+                    if accStd <= Self.calibrationMaxAccStd {
+                        bias = mean
+                        rec?.recordEvent(t: t, event: CSVSchema.Event.calibrate,
+                                         value: "end bias_ax=\(CSVRow.real(bias[0])) bias_ay=\(CSVRow.real(bias[1])) bias_gz=\(CSVRow.real(bias[5]))")
+                    } else {
+                        rec?.recordEvent(t: t, event: CSVSchema.Event.calibrate,
+                                         value: "rejected acc_std=\(CSVRow.real(accStd)) (moving) kept previous bias")
+                    }
                 }
             }
             for k in 0..<6 { raw[k] = qv(raw[k] - bias[k]) }
@@ -390,6 +434,7 @@ public final class SensorFusionEngine: @unchecked Sendable {
             if needsReset {
                 filter.reset(t: t)
                 distance.clear()
+                netForward.clear()
                 zupt.reset()
                 pendingZuptT = nil
                 needsReset = false
@@ -400,20 +445,25 @@ public final class SensorFusionEngine: @unchecked Sendable {
             if runStartPending {
                 runStartPending = false
                 distance.clear()
+                netForward.clear()
                 snap.distance = 0
+                snap.netForward = 0
                 let p = st.pDiag.map { CSVRow.real($0) }.joined(separator: " ")
                 rec?.recordEvent(t: t, event: "filter_state",
                                  value: "vx=\(CSVRow.real(st.vx)) vy=\(CSVRow.real(st.vy)) bx=\(CSVRow.real(st.bx)) by=\(CSVRow.real(st.by)) p=\(p)")
             }
             distance.add(st)
+            netForward.add(st)
             lastIMUT = t
             snap.imuAx = ax; snap.imuAy = ay; snap.imuGz = gz
 
             // ZUPT decision uses this sample; applied after the est row (replay order).
             let still = zupt.addIMU(t: t, ax: ax, ay: ay, az: az)
-            let flowFresh = t - lastFlowGoodT <= zupt.config.flowMaxAge
-            let applyZupt = settings.zuptEnabled && still && !calibrating
-                && (flowFresh || st.speed < settings.zuptMaxSpeedWithoutFlow)
+            let flowAge = t - lastFlowGoodT
+            let flowFresh = flowAge <= zupt.config.flowMaxAge
+            let applyZupt = holdStill || (settings.zuptEnabled && still
+                && (calibrating || flowFresh || st.speed < settings.zuptMaxSpeedWithoutFlow
+                    || flowAge > settings.zuptAnySpeedAfterFlowLoss))
 
             publish(t: t, state: st, recorder: rec)
 
@@ -423,21 +473,23 @@ public final class SensorFusionEngine: @unchecked Sendable {
 
         case .flow:
             var vx = s.a, vy = s.b
-            let q = qv(s.c), h = qv(s.d)
+            let rawQ = qv(s.c), h = qv(s.d)
+            let w = gyroSum.n > 0
+                ? (x: gyroSum.x / Double(gyroSum.n), y: gyroSum.y / Double(gyroSum.n))
+                : lastGyro
             if settings.flowDerotation {
-                let w = gyroSum.n > 0
-                    ? (x: gyroSum.x / Double(gyroSum.n), y: gyroSum.y / Double(gyroSum.n))
-                    : lastGyro
                 let k = settings.flowDerotationSign * h
                 vx -= k * w.y
                 vy += k * w.x
             }
             gyroSum = (0, 0, 0)
             vx = qv(vx); vy = qv(vy)
+            let q = qv(wobbleQuality(rawQ, h: h, omega: (w.x * w.x + w.y * w.y).squareRoot()))
             rec?.recordFlow(t: t, vx: vx, vy: vy, quality: q, h: h)
             flowRate.tick(t)
             lastFlowT = t
-            lastFlowQuality = q
+            lastFlowQuality = rawQ
+            if h.isFinite, h > 0 { lastFlowH = h }
             snap.flowVx = vx; snap.flowVy = vy
             if q >= flowThreshold {
                 lastFlowGoodT = t
@@ -473,6 +525,18 @@ public final class SensorFusionEngine: @unchecked Sendable {
         }
     }
 
+    /// Lowers the flow quality the filter sees while the phone rotates. De-rotation leaves
+    /// ≈ `wobbleResidual`·h·|ω| of real lens swing (the lens isn't on the rotation axis;
+    /// fitted 0.1–0.6 on device), so that variance is added to the flow noise:
+    /// R' = R(q) + (c·h·|ω|)², returned as the quality q' with R(q') = R'. flow.csv logs q'.
+    private func wobbleQuality(_ q: Double, h: Double, omega: Double) -> Double {
+        let c = settings.wobbleResidual
+        guard c > 0, omega > 0, q > 0 else { return q }
+        let cfg = filter.config
+        let r = cfg.flowVariance(quality: q) + (c * h * omega) * (c * h * omega)
+        return cfg.psrRef * (cfg.rFlowBase / r).squareRoot()
+    }
+
     /// Effective PSR threshold for FLOW_OK and ZUPT flow confirmation.
     private var flowThreshold: Double { max(settings.flowQualityThreshold, filter.config.psrMin) }
 
@@ -495,12 +559,14 @@ public final class SensorFusionEngine: @unchecked Sendable {
     }
 
     private func publish(t: Double, state st: FilterState, recorder rec: RunRecorder?) {
-        let h = lastDepthFresh(at: t) ? lidarH : settings.manualHeight
+        let h = lastDepthFresh(at: t) ? lidarH
+            : (t - lastFlowT < 0.5 && lastFlowH > 0 ? lastFlowH : settings.manualHeight)
         snap.t = t
         snap.vx = st.vx; snap.vy = st.vy
         snap.sigmaVx = st.sigmaVx; snap.sigmaVy = st.sigmaVy
         snap.bx = st.bx; snap.by = st.by
-        snap.distance = distance.distance
+        snap.distance = distance.leadCompensated
+        snap.netForward = netForward.distance
         snap.flowQuality = t - lastFlowT < 0.5 ? lastFlowQuality : 0
         snap.h = h
         snap.status = statusFlags(at: t)

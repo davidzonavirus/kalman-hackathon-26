@@ -14,6 +14,9 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
         public var setTorch: @Sendable (Double) -> Double = { $0 }
         /// Focal length (px, full-res) of the active camera format, for meta.json.
         public var focalPx: @Sendable () -> Double = { 0 }
+        /// Measure camera height (LiDAR); call `done(height or nil, message)` when finished.
+        /// nil = not supported on this host.
+        public var measureHeight: (@Sendable (_ done: @escaping @Sendable (Double?, String) -> Void) -> Void)?
         public var deviceName: String = "unknown"
         public var appVersion: String = "0.1"
         public init() {}
@@ -156,6 +159,13 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
         engine.resetDistance()
     }
 
+    /// Zero: distance + net forward to 0 and re-estimate IMU bias (hold still ~1 s).
+    public func zero() {
+        engine.resetDistance()
+        engine.calibrate()
+        engine.recordEvent(CSVSchema.Event.mark, value: "zero")
+    }
+
     /// Sets the torch (0 = off … 1). Returns the applied level.
     @discardableResult
     public func setTorch(level: Double) -> Double {
@@ -199,6 +209,20 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
         case .resetDistance:
             resetDistance()
             return .success(command.name)
+        case .zero:
+            zero()
+            return .success(command.name)
+        case .measureHeight:
+            guard let measure = hooks.measureHeight else { return .failure(command.name, "no LiDAR on this host") }
+            let sem = DispatchSemaphore(value: 0)
+            let result = LockedResult()
+            measure { h, msg in result.set(h, msg); sem.signal() }
+            guard sem.wait(timeout: .now() + 8) == .success else {
+                return .failure(command.name, "LiDAR measurement timed out")
+            }
+            let (h, msg) = result.get()
+            guard let h else { return CommandReply(ok: false, cmd: command.name, error: msg, message: msg) }
+            return CommandReply(ok: true, cmd: command.name, h: h, message: msg)
         }
     }
 
@@ -213,7 +237,17 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
             seq: 0, t: s.t, vx: Float(s.vx), vy: Float(s.vy),
             sigmaVx: Float(s.sigmaVx), sigmaVy: Float(s.sigmaVy),
             distance: Float(s.distance), flowQuality: Float(s.flowQuality), h: Float(s.h),
-            status: s.status, battery: batt, torch: torch)
+            status: s.status, battery: batt, torch: torch,
+            ax: Float(s.imuAx), ay: Float(s.imuAy), gz: Float(s.imuGz),
+            flowVx: Float(s.flowVx), flowVy: Float(s.flowVy), netForward: Float(s.netForward))
+    }
+
+    private final class LockedResult: @unchecked Sendable {
+        private let lock = NSLock()
+        private var h: Double?
+        private var msg = ""
+        func set(_ h: Double?, _ m: String) { lock.withLock { self.h = h; msg = m } }
+        func get() -> (Double?, String) { lock.withLock { (h, msg) } }
     }
 
     private func mountConfig(_ s: RuntimeSettings) -> JSONValue {

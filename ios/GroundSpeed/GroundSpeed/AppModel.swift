@@ -15,6 +15,11 @@ final class LockedBox<T>: @unchecked Sendable {
     func set(_ v: T) { lock.withLock { value = v } }
 }
 
+/// Weak handle to the model for runtime hooks built before `init` finishes.
+final class WeakModel: @unchecked Sendable {
+    weak var model: AppModel?
+}
+
 /// App state + wiring of the iOS sensor sources into the platform-agnostic `GroundSpeedRuntime`.
 @MainActor
 final class AppModel: ObservableObject {
@@ -34,10 +39,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var serverState = ""
     @Published private(set) var camera = CameraFlowSource.Status()
     @Published private(set) var gnssHorizontalAcc: Double = -1
+    @Published private(set) var gnssSpeedAcc: Double = -1
     @Published private(set) var battery: Int?
     @Published private(set) var torchLevel: Double = 0
     @Published private(set) var lidarMessage = DepthSource.isAvailable ? "LiDAR ready — tap MEASURE H" : "No LiDAR — manual h"
     @Published private(set) var measuringHeight = false
+    private var heightCompletion: (@Sendable (Double?, String) -> Void)?
     @Published private(set) var marks = 0
     @Published private(set) var learnMessage: String?
     @Published var runs: [RunSummary] = []
@@ -68,6 +75,13 @@ final class AppModel: ObservableObject {
         hooks.battery = { box.get() }
         hooks.setTorch = { level in cam.setTorch(level: level) }
         hooks.focalPx = { cam.status.focalPx }
+        let modelRef = WeakModel()
+        hooks.measureHeight = { done in
+            Task { @MainActor in
+                guard let m = modelRef.model else { done(nil, "app not ready"); return }
+                m.measureHeight(completion: done)
+            }
+        }
         hooks.deviceName = "\(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)"
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
@@ -87,14 +101,17 @@ final class AppModel: ObservableObject {
         cameraSource.onFlow = { t, vx, vy, q, h in
             engine.ingestFlow(t: t, vx: vx, vy: vy, quality: q, h: h)
         }
+        cameraSource.onEvent = { event, value in engine.recordEvent(event, value: value) }
         location.onSample = { t, speed, acc, course in
             engine.ingestGNSS(t: t, speed: speed, speedAcc: acc, course: course)
         }
         depth.onSample = { t, h in engine.ingestDepth(t: t, h: h) }
+        depth.gravityProvider = { mot.gravityDevice }
         runtime.onStateChange = { [weak self] in
             guard let model = self else { return }
             Task { @MainActor in model.refreshState() }
         }
+        modelRef.model = self
     }
 
     // MARK: Lifecycle
@@ -110,6 +127,12 @@ final class AppModel: ObservableObject {
         }
         startSensors()
         refreshRuns()
+        if ProcessInfo.processInfo.arguments.contains("-gskAutoMeasure") {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                self?.measureHeight()
+            }
+        }
         refreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 self?.tick()
@@ -123,6 +146,7 @@ final class AppModel: ObservableObject {
         case .active:
             UIApplication.shared.isIdleTimerDisabled = true
             if started && !sensorsOn { startSensors() }
+            if started { runtime.server.restartIfNeeded() }
         case .background:
             // The camera stops in the background; close the run cleanly.
             if isRecording { toggleRecording() }
@@ -168,17 +192,30 @@ final class AppModel: ObservableObject {
 
     func toggleRecording() {
         if isRecording {
+            recordCameraEvent()
             runtime.stopRun()
             refreshRuns()
         } else {
             do {
                 try runtime.startRun(label: nil)
+                recordCameraEvent()
                 marks = 0
             } catch {
                 errorMessage = "Could not start run: \(error.localizedDescription)"
             }
         }
         refreshState()
+    }
+
+    /// Camera health into events.csv: format, real flow rate, per-frame cost, drops, exposure.
+    private func recordCameraEvent() {
+        let c = cameraSource.status
+        let s = runtime.engine.snapshot()
+        let value = String(format: "%@; flow %.0f Hz; proc %.2f ms; in %d dropped %d restarts %d; exp 1/%.0f s ISO %.0f; f %.1f px (%@)",
+                           c.formatDescription, s.flowRateHz, c.processingMs, c.framesIn, c.framesDropped, c.restarts,
+                           c.exposureS > 0 ? 1 / c.exposureS : 0, c.iso, c.focalPx,
+                           c.focalFromIntrinsics ? "intrinsics" : "fov")
+        runtime.engine.recordEvent("camera", value: value.replacingOccurrences(of: ",", with: " "))
     }
 
     func mark() {
@@ -189,6 +226,13 @@ final class AppModel: ObservableObject {
     func calibrate() { runtime.calibrate() }
 
     func resetDistance() { runtime.resetDistance() }
+
+    /// Distance + net forward to 0 and re-learn IMU bias (hold still ~1 s).
+    @Published private(set) var zeros = 0
+    func zero() {
+        zeros += 1
+        runtime.zero()
+    }
 
     func setTorch(_ level: Double) {
         var s = settings
@@ -215,14 +259,23 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(s.encoded(), forKey: Self.settingsKey)
     }
 
-    /// Pauses the flow camera, measures height with LiDAR, stores it as the mount height.
-    func measureHeight() {
+    /// Pauses the flow camera, measures height with LiDAR, stores it as the mount height, and
+    /// re-estimates the IMU bias over the same still window (so a separate Zero isn't needed).
+    /// `completion` (any thread) gets (height or nil, message).
+    func measureHeight(completion: (@Sendable (Double?, String) -> Void)? = nil) {
         guard DepthSource.isAvailable else {
             lidarMessage = "No LiDAR on this device — set h manually"
+            completion?(nil, lidarMessage)
             return
         }
-        guard !measuringHeight else { return }
+        guard !measuringHeight else {
+            completion?(nil, "measurement already in progress")
+            return
+        }
+        heightCompletion = completion
         measuringHeight = true
+        runtime.engine.setHoldStill(true)
+        runtime.zero()
         lidarMessage = "Measuring… keep the cart still"
         let cam = cameraSource
         let dep = depth
@@ -238,6 +291,11 @@ final class AppModel: ObservableObject {
     private func finishHeight(_ h: Double?, _ message: String) {
         measuringHeight = false
         lidarMessage = message + (h == nil ? " — using manual h" : "")
+        // Released once flow is back (camera restart + AF/AE settle ≈ 2 s).
+        let engine = runtime.engine
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { engine.setHoldStill(false) }
+        heightCompletion?(h, message)
+        heightCompletion = nil
         if let h {
             var s = settings
             s.manualHeight = (h * 1000).rounded() / 1000
@@ -284,6 +342,7 @@ final class AppModel: ObservableObject {
         snap = runtime.engine.snapshot()
         camera = cameraSource.status
         gnssHorizontalAcc = location.horizontalAccuracy
+        gnssSpeedAcc = location.speedAccuracy
         let lvl = UIDevice.current.batteryLevel
         let b: Int? = lvl < 0 ? nil : Int((lvl * 100).rounded())
         if b != battery { battery = b; batteryBox.set(b) }
