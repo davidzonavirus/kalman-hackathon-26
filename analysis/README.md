@@ -101,7 +101,7 @@ plausible, not isolated), **HYPOTHESIS** (not tested by the data), **CORRECTION*
 | 9 | Dashboard +4 m jump | est.csv of 00:01:22 dips 2.49 cm at stop (lead-term cutoff) | fade lead; dashboard reset rule | dip reproduced from the log | CONFIRMED |
 | 10 | Car 1: height tracker collapsed, window wrap | tracked h 0.17 → 0.06 m; flow ÷ GPS median 0.31 at 10–15 mph | motion prediction | car 2 ratio 0.69–0.80 | CONFIRMED |
 | 11 | Car 2: tracker drift, zero-lock | h → 0.11 m; flow 0 while GPS 4–7 m/s | tracking off; coasting; jump rejection | car 3 steady cruise ratio 0.984 | CONFIRMED |
-| 12 | Car 3: blur above ~25 mph, zero-lock 273–304 s | PSR ≈ 11 near 10 m/s; 30 GPS epochs at >3 m/s read <0.5 m/s | fake-stop rule (ef48eaa); prediction only above 32 px/frame (5295780) | **not road-tested**: the only later runs are three short indoor pushes at 02:26–02:27 (h 0.171/0.32/0.506 m, no GPS, no course length) | UNTESTED |
+| 12 | Car 3: blur above ~25 mph, zero-lock 273–304 s | PSR ≈ 11 near 10 m/s; 30 GPS epochs at >3 m/s read <0.5 m/s | fake-stop rule (ef48eaa); prediction only above 32 px/frame (5295780) | **not road-tested**: the only later runs are three short pushes at 02:26–02:27 (h 0.171/0.32/0.506 m, no GPS, no course length) | UNTESTED |
 | 13 | GPS accuracy | iOS speed_acc median 2.2 m/s while moving (final drive), not "±0.3 m/s"; empirical white noise 0.16 m/s; lag 0.65 s behind the camera | – | GPS barely affects the filter: removing it changes the estimate by at most 4 mm/s | CORRECTION (write-up figure) |
 | 14 | Sign convention | every calibration push moved along the phone's −x axis (∫vₓ ≈ −4.9 m) | none needed: odometer is ∫\|v\| | the signed `net_forward` field would read negative | CONFIRMED (harmless) |
 

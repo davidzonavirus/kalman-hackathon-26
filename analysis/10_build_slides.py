@@ -81,7 +81,7 @@ def figure(slide, name, x, y, w, h):
 def card(slide, x, y, w, h, value, label, color=BLUE):
     rect(slide, x, y, w, h, LIGHT)
     rect(slide, x, y, Inches(0.07), h, color)
-    text(slide, x + Inches(0.15), y + Inches(0.05), w - Inches(0.2), Inches(0.55), value, size=22, bold=True, color=color)
+    text(slide, x + Inches(0.15), y + Inches(0.05), w - Inches(0.2), Inches(0.55), value, size=22 if len(value) <= 9 else 18, bold=True, color=color)
     text(slide, x + Inches(0.15), y + Inches(0.6), w - Inches(0.2), h - Inches(0.62), label, size=10.5, color=MUTED)
 
 
@@ -153,6 +153,12 @@ S2, S1 = mcd["new_run"], mcd["repeat_run"]
 VM = mcv["main"]
 cal = M["calibration_refit"]
 FIN = "2026-10-04_01-59-42"
+VPENDING = not mcv["sensitivity"]           # velocity sensitivity/seed runs not finished yet
+_pp = [v for v in mcd["pipeline_pilot"]["per_profile_bias_pct"]]
+PROFILE_SPREAD = (sum((x - sum(_pp) / len(_pp)) ** 2 for x in _pp) / (len(_pp) - 1)) ** 0.5
+_sd = [v["abs_p99_pct"] for v in mcd["seeds"].values()]
+DSEED = (max(_sd) - min(_sd)) / 2
+_seg_r = [g["ratio"] for g in vr["segments"][1:]]
 
 # ================================================================== 1 Title
 s = prs.slides.add_slide(BLANK); _n[0] += 1
@@ -169,6 +175,9 @@ text(s, Inches(1.0), Inches(5.6), Inches(11.5), Inches(1.0),
       "Independent re-analysis of all 58 recorded runs, rebuilt from code, logs and git history · every number traceable to analysis/out/final_metrics.json"],
      size=12, color=RGBColor(0x9F, 0xB3, 0xC8))
 s.notes_slide.notes_text_frame.text = "Team roles from README.md. Analysis code: analysis/ (run_all.py)."
+if VPENDING:
+    text(s, Inches(1.0), Inches(6.75), Inches(11.5), Inches(0.4),
+         f"DRAFT: velocity Monte Carlo shown from {mcv['N']:,} trials; its sensitivity and convergence checks are still running.", size=12, bold=True, color=ORANGE)
 
 # ================================================================== 2 What we built
 s = new_slide("An iPhone looking at the floor, fused by a 4-state Kalman filter", "What we built",
@@ -207,7 +216,7 @@ table(s, Inches(0.55), Inches(1.55), Inches(5.6), [
     ["gnss.csv", "~1 Hz", "speed, speed accuracy, course"],
     ["est.csv", "100 Hz", "filter v, σ, distance, status"],
     ["events.csv", "—", "start/stop, ZUPT, calibrate…"],
-    ["lidar/*.csv", "~30 Hz, 1.5 s", "32 height measurements"],
+    ["lidar/*.csv", "~30 Hz, 1.5 s", f"{h_['n_lidar']} height measurements"],
 ], [1.35, 1.75, 2.5], size=11)
 bullets(s, Inches(0.55), Inches(4.0), Inches(5.6), Inches(3.0), [
     ("Archive:", f"{h_['n_runs']} phone runs, {h_['n_lidar']} LiDAR logs, {h_['n_dash']} dashboard sessions, 21 iOS crash/resource reports."),
@@ -218,8 +227,8 @@ bullets(s, Inches(0.55), Inches(4.0), Inches(5.6), Inches(3.0), [
 figure(s, "story_raw_push.png", Inches(6.35), Inches(1.5), Inches(6.6), Inches(5.4))
 
 # ================================================================== 4 Timeline
-s = new_slide("Git has one code commit for the whole night, so the run metadata tells the story", "Chronology",
-              "meta.json (focal_px, mount_height_m), flow.csv rates, ios_diagnostics/ file times; git log (4 commits)",
+s = new_slide("One code commit for the whole night: the run logs tell the story", "Chronology",
+              "meta.json (focal_px, mount_height_m), flow.csv rates, ios_diagnostics/ file times; git log (5 commits)",
               "Git history: a9e3712 initial, 379dcfd 19:41 (whole project), aa0d32a 02:12 (all fixes), ef48eaa 02:25 (data + write-up). Intermediate builds are only visible through what they logged.")
 figure(s, "story_timeline.png", Inches(0.45), Inches(1.45), Inches(8.6), Inches(5.5))
 bullets(s, Inches(9.2), Inches(1.6), Inches(3.8), Inches(5.3), [
@@ -228,6 +237,7 @@ bullets(s, Inches(9.2), Inches(1.6), Inches(3.8), Inches(5.3), [
     ("22:22–22:25", "16 ft pushes read +7 % → focal length ×1.073 at 22:37, then ×1.027 plus a −7.9 mm LiDAR offset from 22:54."),
     ("22:59–00:01", "79 cm mount and varying-ride-height experiments (both failed, see slide 9)."),
     ("01:14–01:59", "three car drives; the image-expansion height tracker drifts in drives 1–2 and is switched off for drive 3."),
+    ("02:26–02:27", "three short pushes at 0.17, 0.32 and 0.51 m with no GPS fix and no recorded course length (last runs)."),
 ], size=12)
 
 # ================================================================== 5 Problem/Fix 1: camera crash
@@ -297,11 +307,11 @@ table(s, Inches(7.95), Inches(1.5), Inches(5.0), [
 bullets(s, Inches(7.95), Inches(4.2), Inches(5.0), Inches(2.8), [
     ("Fixes:", "motion-predicted correlation window (bench range 3 → 9 m/s); height tracking switched off; coast 24 frames before re-acquiring; weak results that jump far are rejected."),
     ("Still failing in drive 3:", f"above ~25 mph blur drops PSR to ~11; the tracker then locked onto zero and read 0 from t = {vr['zero_lock']['first_t']:.0f} to {vr['zero_lock']['last_t']:.0f} s while GPS said 4–6.6 m/s."),
-    ("Not verified:", "the 'fake-stop' rule meant to prevent that lock (commit ef48eaa) was never driven: the only runs recorded after it are three short indoor pushes (02:26–02:27) with no GPS and no course length."),
+    ("Not verified:", "the 'fake-stop' rule meant to prevent that lock (commit ef48eaa) was never driven: the only runs recorded after it are three short pushes (02:26–02:27) with no GPS fix and no course length."),
 ], size=11.5)
 
 # ================================================================== 9 What didn't work
-s = new_slide("Failures we kept: high mounts and changing ride height are outside the envelope", "What did not work",
+s = new_slide("What failed: high mounts and changing ride height", "What did not work",
               "distance_runs.csv (as recorded; these runs already used the final calibration), writeup §3.8, §3.10")
 figure(s, "dist_all_runs.png", Inches(0.4), Inches(1.4), Inches(8.3), Inches(4.4))
 tag(s, Inches(8.95), Inches(1.5), "FAILED")
@@ -362,7 +372,7 @@ bullets(s, Inches(0.55), Inches(5.45), Inches(12.4), Inches(1.6), [
 
 # ================================================================== 12 Velocity accuracy
 seg = vr["segments"]
-s = new_slide(f"Velocity: RMSE {env['rmse']:.2f} m/s against GPS in the final drive, worst during acceleration", "Velocity accuracy (real data)",
+s = new_slide(f"Velocity: {env['rmse']:.2f} m/s RMSE vs GPS, worst when accelerating", "Velocity accuracy (real data)",
               f"velocity_summary.json → final_envelope; velocity_samples_{FIN}.csv; figures/vel_final_timeseries.png",
               "Target = GPS Doppler speed (iOS CLLocation.speed), 1 Hz, shifted by the fitted 0.65 s lag. Estimate = filter replayed WITHOUT GPS updates, so the comparison is independent. "
               "Envelope = GPS 2–11.2 m/s before the first >25 mph excursion. Errors are autocorrelated: CIs use a moving-block bootstrap.")
@@ -407,7 +417,7 @@ text(s, Inches(0.55), Inches(5.55), Inches(12.3), Inches(1.3), [
 ], size=12.5)
 
 # ================================================================== 14 MC results
-s = new_slide("Monte Carlo bounds: ±0.8–1.2 % on distance, ±1.0 m/s on speed (95 %)", "Monte Carlo results",
+s = new_slide(f"Monte Carlo bounds (95 %): ±{S2['abs_p95_pct']:.1f} % on distance, ±{VM['abs_p95']:.1f} m/s on speed", "Monte Carlo results",
               "mc_distance_summary.json, mc_velocity_summary.json; figures/mc_dist.png, mc_vel.png")
 figure(s, "mc_dist.png", Inches(0.35), Inches(1.4), Inches(6.5), Inches(2.6))
 figure(s, "mc_vel.png", Inches(0.35), Inches(4.1), Inches(6.5), Inches(2.4))
@@ -441,15 +451,18 @@ table(s, Inches(4.8), Inches(1.5), Inches(8.15), [
     ["Real vs MC spread", f"LOO SD {ed['loo_vs_S2']['emp_sd']:.2f} % vs MC {ed['loo_vs_S2']['mc_sd']:.2f} %",
      f"real SD {ev_['real_sd']:.2f} vs MC (incl. GPS noise) {ev_['mc_obs_sd']:.2f} m/s"],
     ["Tails", f"worst real LOO run at MC pct {100*ed['loo_vs_S2']['mc_quantile_of_emp_max']:.0f}", f"|e|₉₅ real {ev_['real_abs_p95']:.2f} vs MC {ev_['mc_obs_abs_p95']:.2f} m/s"],
-    ["Analytic", f"independent-term SD {mcd['analytic_sd_pct']:.2f} % vs MC {S2['sd_pct']:.2f} %", f"filter's own σ (white noise only) {mcv['analytic']['sd_post']*1000:.0f} mm/s ≪ real error"],
-    ["Convergence / seeds", "|e|₉₉ stable to ±0.02 % across 5 seeds", "|e|₉₉ stable across 5 seeds"],
+    ["Analytic", f"independent-term SD {mcd['analytic_sd_pct']:.2f} % vs MC {S2['sd_pct']:.2f} %",
+     "pending" if VPENDING else f"filter's own σ (white noise only) {mcv['analytic']['sd_post']*1000:.0f} mm/s ≪ real error"],
+    ["Convergence / seeds", f"|e|₉₉ within ±{DSEED:.2f} % across 5 seeds",
+     "pending" if VPENDING else "|e|₉₉ stable across 5 seeds"],
 ], [1.8, 3.15, 3.2], size=10.5, row_h=0.42)
 bullets(s, Inches(0.55), Inches(4.4), Inches(12.4), Inches(2.6), [
     ("Distance is dominated by scale:", f"LiDAR height repeatability alone ({mcd['variance_decomposition']['height_rel_sd_pct']:.2f} %) explains the observed run-to-run scatter. "
-     f"Flow noise integrates to {mcd['pipeline_pilot']['analytic_white_noise_sd_pct']:.2f} % and push-profile effects to about 0.17 %. The calibration constants dominate when extrapolating: at 0.50 m the 95 % interval widens to "
+     f"Flow noise integrates to {mcd['pipeline_pilot']['analytic_white_noise_sd_pct']:.2f} % and push-profile effects to about {PROFILE_SPREAD:.2f} %. The calibration constants dominate when extrapolating: at 0.50 m the 95 % interval widens to "
      f"{f(mcd['sensitivity']['mount_h_0p50_extrapolated']['int95_pct'][0],1)}…{f(mcd['sensitivity']['mount_h_0p50_extrapolated']['int95_pct'][1],1)} %."),
     ("Velocity is dominated by a slow error the data barely constrain:", "frame noise is ~1 % and averaged away by the filter; the ±0.5 m/s, ~3 s drift (pitch/ride height, reference lag) sets the bound. "
-     "A model where that error scales with speed over-predicted the real spread (0.79 vs 0.53 m/s), so the additive model is used. Frame-noise distribution choice (empirical, Gaussian, Student-t) changes nothing."),
+     "A model where that error scales with speed over-predicted the real spread (0.79 vs 0.53 m/s), so the additive model is used. "
+     + ("Velocity sensitivity runs are still computing." if VPENDING else "Frame-noise distribution choice (empirical, Gaussian, Student-t) barely moves the bounds.")),
     ("Circularity, stated plainly:", "the slow-error size is fitted to the same drive it is compared with. The match in spread is built in; the matching tail (p95) and time structure are the real test."),
 ], size=12)
 
@@ -458,7 +471,7 @@ s = new_slide("What we learned, what the sensor can claim, and what to do next",
               "final_metrics.json")
 card(s, Inches(0.55), Inches(1.5), Inches(3.0), Inches(1.45), f"±{S2['abs_p95_pct']:.1f} % (95 %)", f"distance, new run, 0.19–0.24 m mount, indoor, ~5 m; observed max {loo['max_abs_pct']:.2f} % (LOO)", GREEN)
 card(s, Inches(3.75), Inches(1.5), Inches(3.0), Inches(1.45), f"±{VM['abs_p95']:.1f} m/s (95 %)", f"instantaneous car speed 2–9 m/s; real RMSE vs GPS {env['rmse']:.2f} m/s", BLUE)
-card(s, Inches(6.95), Inches(1.5), Inches(3.0), Inches(1.45), f"{seg[0]['ratio']:.3f} × GPS", "best steady cruise (4.5–5.3 m/s); accel/brake segments 0.87–1.24×", BLUE)
+card(s, Inches(6.95), Inches(1.5), Inches(3.0), Inches(1.45), f"{seg[0]['ratio']:.3f} × GPS", f"best steady cruise (4.5–5.3 m/s); other segments {min(_seg_r):.2f}–{max(_seg_r):.2f}×", BLUE)
 card(s, Inches(10.15), Inches(1.5), Inches(2.8), Inches(1.45), "≈ 25 mph", "tracking limit at night (blur); 31 s zero-lock after overspeed; fix untested", RED)
 text(s, Inches(0.55), Inches(3.15), Inches(4.0), Inches(0.4), "Lessons", size=16, bold=True)
 bullets(s, Inches(0.55), Inches(3.55), Inches(4.0), Inches(3.4), [

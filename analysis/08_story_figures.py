@@ -41,7 +41,7 @@ def main():
     for c in crashes:
         ax.plot(c, 255, "v", color=C["red"], ms=6)
     ax.text(datetime(2026, 10, 3, 20, 10), 258, "▼ camera-daemon crash reports", color=C["red"], fontsize=8, va="bottom")
-    ax.set_title("What the logs say happened, run by run (Oct 3 19:34 → Oct 4 01:59)")
+    ax.set_title("What the logs say happened, run by run (Oct 3 19:34 → Oct 4 02:27)")
     ax = axs[1]
     ax.plot(inv.when, inv.focal_px, "s", color=C["orange"], ms=5)
     ax.set_ylabel("focal length\nused (px)")
