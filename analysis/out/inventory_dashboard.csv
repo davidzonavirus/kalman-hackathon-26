@@ -1,0 +1,22 @@
+session,files,n,columns,dur,seq_missing,seq_backwards
+2026-10-03_19-33-46,commands.csv telemetry.csv,16972.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h seq recv_time,1839.3190968036652,0.0,2.0
+2026-10-03_20-52-34,telemetry.csv,306.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,6.095609903335571,0.0,0.0
+2026-10-03_20-53-19,commands.csv telemetry.csv,9626.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,192.47473311424255,0.0,0.0
+2026-10-03_20-59-31,commands.csv,,,,,
+2026-10-03_21-23-36,telemetry.csv,5400.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,133.58340215682983,0.0,4.0
+2026-10-03_21-25-51,commands.csv telemetry.csv,5868.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,117.31960725784302,0.0,0.0
+2026-10-03_21-33-26,commands.csv telemetry.csv,6101.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,122.07692003250122,0.0,0.0
+2026-10-03_22-18-43,commands.csv telemetry.csv,21262.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,444.115168094635,3.0,0.0
+2026-10-03_22-35-41,commands.csv telemetry.csv,14968.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,299.3339819908142,0.0,0.0
+2026-10-03_22-52-30,commands.csv telemetry.csv,38292.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,765.7612309455872,0.0,0.0
+2026-10-03_23-22-54,commands.csv telemetry.csv,2453.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,48.238588094711304,0.0,0.0
+2026-10-03_23-32-01,telemetry.csv,959.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,19.2209689617157,0.0,0.0
+2026-10-03_23-32-24,commands.csv telemetry.csv,1554.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,31.352153062820435,0.0,0.0
+2026-10-03_23-34-09,telemetry.csv,1421.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,28.919519186019897,0.0,0.0
+2026-10-03_23-36-56,telemetry.csv,5524.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,110.39097380638123,0.0,0.0
+2026-10-03_23-38-49,commands.csv telemetry.csv,11704.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,234.09293818473816,0.0,0.0
+2026-10-03_23-59-35,commands.csv telemetry.csv,10460.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,209.17570781707764,0.0,0.0
+2026-10-04_01-11-20,telemetry.csv,4702.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,94.01290011405945,0.0,0.0
+2026-10-04_01-12-55,commands.csv telemetry.csv,18319.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,1796.8705439567566,2293.0,5.0
+2026-10-04_01-42-54,commands.csv telemetry.csv,7547.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,161.1983780860901,66.0,0.0
+2026-10-04_01-57-54,commands.csv telemetry.csv,6753.0,t v_x v_y sigma_vx sigma_vy distance status flow_quality h ax ay gz flow_vx flow_vy net_forward seq recv_time version,135.12215209007263,3.0,0.0

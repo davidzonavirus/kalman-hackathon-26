@@ -1,0 +1,24 @@
+{
+  "n_runs": 58,
+  "n_lidar": 36,
+  "n_dash": 21,
+  "total_nan": 0,
+  "total_inf": 0,
+  "total_dup_t": {
+    "est_n_dup_t": 0.0,
+    "flow_n_dup_t": 1.0,
+    "imu_n_dup_t": 0.0,
+    "gnss_n_dup_t": 3.0
+  },
+  "total_backwards": {
+    "est_n_backwards": 0.0,
+    "flow_n_backwards": 0.0,
+    "imu_n_backwards": 0.0,
+    "gnss_n_backwards": 0.0
+  },
+  "focal_px_values": [
+    860.656,
+    883.893,
+    923.484
+  ]
+}
