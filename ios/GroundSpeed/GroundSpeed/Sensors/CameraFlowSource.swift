@@ -88,6 +88,9 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     /// needs `relockPSR`: the fixed pattern peaks at zero with PSR 10–25, and a car cannot
     /// stop within a lost-track interval (seen: locked at 0 while driving 5–6 m/s for 30 s).
     static let zeroShift = 1.5, movingShift = 8.0
+    /// Below this |lastGood| (full-res px, ¼ of the ±128 px window) the plain un-predicted
+    /// correlation is used: the path the cart runs were calibrated on (±0.4 %).
+    static let predictFrom = 32.0
 
     // Cross-thread state.
     private let lock = NSLock()
@@ -547,7 +550,8 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
         if let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) {
             let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
             let raw = UnsafeRawPointer(base)
-            let m = lostFrames <= Self.coastFrames ? 1 : Self.reacquire[lostFrames % Self.reacquire.count]
+            let fast = hypot(lastGood.dx, lastGood.dy) >= Self.predictFrom
+            let m = !fast ? 0 : lostFrames <= Self.coastFrames ? 1 : Self.reacquire[lostFrames % Self.reacquire.count]
             let s = correlator.ingest(lumaBase: raw, width: width, height: height, bytesPerRow: bpr,
                                       predictX: Int((lastGood.dx * m).rounded()),
                                       predictY: Int((lastGood.dy * m).rounded()))

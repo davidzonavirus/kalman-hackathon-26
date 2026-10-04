@@ -195,7 +195,7 @@ These are in the order we hit them, over about 8 hours of testing (Oct 3, 19:30 
 | LiDAR height offset | −7.9 mm (likely range 5–11 mm) | `DepthSource.swift` | Same fit |
 | Max exposure | 1/1000 s | `CameraFlowSource.maxExposure` | Blur vs. noise at ISO 2200 |
 | Correlator | 128², downsample 2, PSR min 8 | `PhaseCorrelator.swift` | Bench + cart runs |
-| Tracking | coast 24 frames, relock PSR 30, fake-stop rule | `CameraFlowSource.swift` | Car runs 2 and 3 |
+| Tracking | prediction only above 32 px/frame; coast 24 frames, relock PSR 30, fake-stop rule | `CameraFlowSource.swift` | Car runs 2 and 3; slow pushes keep the calibrated un-predicted path |
 | Filter | q_accel 0.1, q_bias 1e-5, r_flow_base 1.6e-3, gate 9 | `GroundSpeedFilter.swift` | Joseph's reference filter |
 
 ---

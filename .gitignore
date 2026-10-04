@@ -8,6 +8,8 @@ dashboard/logs/
 .DS_Store
 .build-ios/
 device_data/
+hardware/_refs/
+hardware/spice/_t/
 
 # FPGA build products
 fpga/quartus/db/
@@ -15,6 +17,7 @@ fpga/quartus/incremental_db/
 fpga/quartus/output_files/
 fpga/quartus/*.log
 fpga/quartus/*.rpt
+fpga/quartus/*.qws
 fpga/sim/build/
 fpga/quartus/simulation/
 fpga/quartus/c5_pin_model_dump.txt
