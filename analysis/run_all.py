@@ -12,7 +12,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 STEPS = ["01_inventory.py", "02_replay_validation.py", "03_distance_analysis.py", "04_velocity_analysis.py",
          "05_noise_characterization.py", "06_mc_distance.py", "07_mc_velocity.py", "08_story_figures.py",
-         "09_summary.py", "10_build_slides.py", "11_build_briefing.py"]
+         "09_summary.py", "10_build_slides.py", "11_build_briefing.py", "12_render_json_tables.py"]
 
 if __name__ == "__main__":
     sys.path.insert(0, HERE)
