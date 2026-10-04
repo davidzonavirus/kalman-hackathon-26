@@ -250,7 +250,7 @@ def main():
     Ns = 600 if FAST else 10_000
     sens = {"gaussian_white": dict(model="gaussian"), "student_t3_white": dict(model="t3"),
             "white_noise_x3": dict(white_mult=3.0), "no_slow_term": dict(sd_slow=0.0),
-            "slow_sd_half_variance_to_reference": dict(sd_slow=prm["sd_slow_rel"] / np.sqrt(2)),
+            "slow_sd_half_variance_to_reference": dict(sd_slow=prm["sd_slow_abs"] / np.sqrt(2)),
             "slow_tau_x0p5": dict(tau=prm["tau_slow_s"] * 0.5), "slow_tau_x2": dict(tau=prm["tau_slow_s"] * 2),
             "no_gnss_fusion": dict(use_gnss=False), "relative_slow_model": dict(slow_mode="rel")}
     for name, kw in sens.items():
@@ -328,5 +328,49 @@ def main():
     print("runtime", time.time() - t0)
 
 
+def replot():
+    """Redraw figures/mc_vel.png from the saved summary + samples (no re-simulation)."""
+    style()
+    res = json.load(open(os.path.join(OUT, "mc_velocity_summary.json")))
+    z = np.load(os.path.join(OUT, "mc_velocity_samples.npz"))
+    E, vt, dense, tdense = z["E"].astype(float), z["v_true"], z["dense"], z["tdense"]
+    prm, _, _, good = derive_inputs()
+    real_e = good[good.t <= T_END].err_nognss.to_numpy()
+    mv = vt > 2
+    rng = np.random.default_rng(SEED + 99)
+    sim_obs = E[mv].ravel() + rng.normal(0, prm["sd_gnss"], mv.sum() * E.shape[1])
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4.2))
+    ax = axs[0]; bins = np.linspace(-2.5, 2.5, 101)
+    ax.hist(E[mv].ravel(), bins=bins, density=True, color=C["blue"], alpha=0.5, label="MC: estimated − target")
+    ax.hist(sim_obs, bins=bins, density=True, histtype="step", color=C["dark"], lw=1.2, label="MC: estimated − simulated GPS")
+    ax.hist(real_e, bins=np.linspace(-2.5, 2.5, 26), density=True, histtype="step", color=C["orange"], lw=2, label=f"real: estimated − GPS (n={len(real_e)})")
+    for v in res["main"]["int95"]:
+        ax.axvline(v, color=C["blue"], ls="--", lw=0.8)
+    ax.set_xlabel("velocity error (m/s)"); ax.set_ylabel("density"); ax.set_title(f"Velocity MC (N={res['N']:,}) vs real (car, 0–95 s)")
+    ax.legend(fontsize=7.5, loc="upper left")
+    ax = axs[1]
+    for j in range(min(25, dense.shape[1])):
+        ax.plot(tdense, dense[:, j], color=C["blue"], lw=0.5, alpha=0.35)
+    ax.axhline(0, color="k", lw=0.6); ax.set_ylim(-2, 2)
+    ax.set_xlabel("time (s)"); ax.set_ylabel("estimated − target (m/s)"); ax.set_title("25 simulated error traces (time-correlated)")
+    ax = axs[2]
+    lab = {"main": "BASELINE", "sens_gaussian_white": "Gaussian frame noise", "sens_student_t3_white": "Student-t(3) frame noise",
+           "sens_white_noise_x3": "frame noise ×3", "sens_no_slow_term": "no slow drift",
+           "sens_slow_sd_half_variance_to_reference": "half of drift is GPS's",
+           "sens_slow_tau_x0p5": "drift τ ×0.5", "sens_slow_tau_x2": "drift τ ×2", "sens_no_gnss_fusion": "no GPS fusion",
+           "sens_relative_slow_model": "drift ∝ speed (relative)"}
+    names = [n for n in lab if n in res]
+    y = np.arange(len(names))[::-1]
+    for yi, nm in zip(y, names):
+        r_ = res[nm]
+        ax.plot(r_["int95"], [yi, yi], color=C["blue"], lw=4, solid_capstyle="butt")
+        ax.plot(r_["int99"], [yi, yi], color=C["blue"], lw=1.2, alpha=0.6)
+        ax.plot(r_["bias"], yi, "|", color="k", ms=10)
+    ax.set_yticks(y, [lab[n] for n in names], fontsize=8); ax.axvline(0, color="k", lw=0.6)
+    ax.set_xlabel("velocity error (m/s): thick 95%, thin 99%"); ax.set_title("Sensitivity of velocity bounds")
+    fig.tight_layout(); fig.savefig(os.path.join(FIG, "mc_vel.png"), dpi=170); plt.close(fig)
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    replot() if "--replot" in sys.argv else main()

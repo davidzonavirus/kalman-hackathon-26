@@ -448,6 +448,8 @@ s = new_slide("Reality vs simulation: agreement where we can test it, and what d
 figure(s, "mc_dist_convergence.png", Inches(0.4), Inches(1.45), Inches(4.2), Inches(2.75))
 table(s, Inches(4.8), Inches(1.5), Inches(8.15), [
     ["Check", "Distance", "Velocity"],
+    ["Mean (bias)", f"LOO mean {f(dr['final_leave_one_out']['bias_pct'],2,True)} % vs MC {f(S2['mean_pct'],2,True)} %",
+     f"real {f(ev_['real_bias'],2,True)} vs MC {f(VM['bias'],2,True)} m/s (real 95 % CI {f(vr['envelope_bootstrap']['mean_ci95'][0],2)}…{f(vr['envelope_bootstrap']['mean_ci95'][1],2)}; drift model is zero-mean)"],
     ["Real vs MC spread", f"LOO SD {ed['loo_vs_S2']['emp_sd']:.2f} % vs MC {ed['loo_vs_S2']['mc_sd']:.2f} %",
      f"real SD {ev_['real_sd']:.2f} vs MC (incl. GPS noise) {ev_['mc_obs_sd']:.2f} m/s"],
     ["Tails", f"worst real LOO run at MC pct {100*ed['loo_vs_S2']['mc_quantile_of_emp_max']:.0f}", f"|e|₉₅ real {ev_['real_abs_p95']:.2f} vs MC {ev_['mc_obs_abs_p95']:.2f} m/s"],
@@ -455,14 +457,16 @@ table(s, Inches(4.8), Inches(1.5), Inches(8.15), [
      "pending" if VPENDING else f"filter's own σ (white noise only) {mcv['analytic']['sd_post']*1000:.0f} mm/s ≪ real error"],
     ["Convergence / seeds", f"|e|₉₉ within ±{DSEED:.2f} % across 5 seeds",
      "pending" if VPENDING else "|e|₉₉ stable across 5 seeds"],
-], [1.8, 3.15, 3.2], size=10.5, row_h=0.42)
+], [1.8, 3.15, 3.2], size=10.5, row_h=0.4)
 bullets(s, Inches(0.55), Inches(4.4), Inches(12.4), Inches(2.6), [
     ("Distance is dominated by scale:", f"LiDAR height repeatability alone ({mcd['variance_decomposition']['height_rel_sd_pct']:.2f} %) explains the observed run-to-run scatter. "
      f"Flow noise integrates to {mcd['pipeline_pilot']['analytic_white_noise_sd_pct']:.2f} % and push-profile effects to about {PROFILE_SPREAD:.2f} %. The calibration constants dominate when extrapolating: at 0.50 m the 95 % interval widens to "
      f"{f(mcd['sensitivity']['mount_h_0p50_extrapolated']['int95_pct'][0],1)}…{f(mcd['sensitivity']['mount_h_0p50_extrapolated']['int95_pct'][1],1)} %."),
     ("Velocity is dominated by a slow error the data barely constrain:", "frame noise is ~1 % and averaged away by the filter; the ±0.5 m/s, ~3 s drift (pitch/ride height, reference lag) sets the bound. "
      "A model where that error scales with speed over-predicted the real spread (0.79 vs 0.53 m/s), so the additive model is used. "
-     + ("Velocity sensitivity runs are still computing." if VPENDING else "Frame-noise distribution choice (empirical, Gaussian, Student-t) barely moves the bounds.")),
+     + ("Velocity sensitivity runs are still computing." if VPENDING else
+        "Frame-noise model (empirical, Gaussian, Student-t, ×3) barely moves the bounds; the drift size does: if half of it is really GPS's own error, "
+        f"the 95 % bound shrinks from ±{VM['abs_p95']:.2f} to ±{max(abs(x) for x in mcv['sensitivity']['slow_sd_half_variance_to_reference']['int95']):.2f} m/s.")),
     ("Circularity, stated plainly:", "the slow-error size is fitted to the same drive it is compared with. The match in spread is built in; the matching tail (p95) and time structure are the real test."),
 ], size=12)
 
