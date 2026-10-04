@@ -11,6 +11,7 @@ Kalman filter **on the phone**, streamed live to a MacBook dashboard.
 | `GroundSpeedKit/` | Swift package: `SpeedProtocol`, `KalmanCore`, `OpticalFlow`, `PhoneRuntime`, tools `kfreplay`, `phone-sim`, `gsk-checks` | David / Joseph |
 | `ios/` | SwiftUI iPhone app (XcodeGen project) | David |
 | `dashboard/` | Mac telemetry dashboard (Python stdlib + browser UI) | Sean |
+| `fpga/` | **The Kalman filter as FPGA hardware** (Verilog, Quartus project, bit-exact Python model, simulation); the dashboard can run its estimate on it | Sean |
 | `docs/HACKATHON_WRITEUP.md` | **Presentation write-up**: how it works, results, every bug we chased | all |
 | `data/` | Every run, dashboard session and LiDAR log from the hackathon, with a run guide | all |
 
@@ -24,6 +25,11 @@ first over UDP 9000 and the phone's command link. The phone is found automatical
 Bonjour, including on IPv6-only hotspots; `dashboard/run.sh --phone <ip>` overrides.
 ```bash
 cd GroundSpeedKit && swift run phone-sim --host 127.0.0.1   # simulated phone, real Swift pipeline
+```
+
+To run the Kalman filter on the (simulated) FPGA instead of trusting the phone's estimate:
+```bash
+dashboard/run.sh --fpga --sim      # needs Icarus Verilog (iverilog); see fpga/README.md
 ```
 
 Checks:

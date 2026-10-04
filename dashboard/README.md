@@ -49,6 +49,23 @@ python3 -m gsdash.sim --loss 0.05 # drop 5 % of packets to exercise the gap coun
 
 The Swift simulator should also work: `cd GroundSpeedKit && swift run phone-sim --host 127.0.0.1`.
 
+## Kalman filter on the FPGA
+
+By default the screen shows the estimate the phone computed. With `--fpga` the dashboard
+recomputes it on the FPGA design in `fpga/`, simulated at clock level, from the raw sensor
+columns of the v2 frame (a_x, a_y, gyro z, flow v_x / v_y / PSR):
+
+```sh
+./run.sh --fpga --sim                       # Icarus Verilog (iverilog) on PATH
+./run.sh --fpga --fpga-backend model --sim  # same program on the Python model of the processor
+```
+
+The FPGA's v_x, v_y, sigma, distance and net forward replace the phone's in the charts and in
+`telemetry.csv` (the phone's values are kept in memory as `frame["phone"]`). The header shows
+`KF on FPGA (rtl-iverilog) load 60%`; `/api/status` has an `fpga` block. Zero / Start /
+Reset-distance also zero the FPGA side's odometer. v1 frames have no raw columns and pass
+through untouched. How it works and how it was verified: `fpga/README.md`.
+
 ## At the venue
 
 1. **Network.** On the iPhone, turn on Settings → Personal Hotspot ("Allow Others to
@@ -131,7 +148,7 @@ every number.
 ```
 python3 -m gsdash [--udp-port 9000] [--http-port 8080] [--bind 127.0.0.1]
                   [--phone IP] [--cmd-port 9001] [--log-dir dashboard/logs]
-                  [--no-log] [--no-bonjour]
+                  [--no-log] [--no-bonjour] [--fpga] [--fpga-backend auto|rtl|model]
 ```
 
 ## Logs

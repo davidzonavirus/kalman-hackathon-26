@@ -186,6 +186,7 @@ class UDPReceiver(threading.Thread):
     def __init__(self, telem: Telemetry, logger: SessionLogger, host: str, port: int):
         super().__init__(daemon=True, name="udp-rx")
         self.telem, self.logger = telem, logger
+        self.stage = None          # optional FpgaStage: frames go through it before the dashboard
         # iPhone hotspots on IPv6-only carriers give the laptop no 172.20.10.x address, so a
         # wildcard bind listens dual-stack (IPv6 + IPv4-mapped).
         if host in ("", "0.0.0.0", "::"):
@@ -216,11 +217,18 @@ class UDPReceiver(threading.Thread):
             except P.FrameError as e:
                 self.telem.add_error(e)
                 continue
-            self.telem.add_frame(frame, addr)
-            try:
-                self.logger.frame(frame)
-            except OSError as e:
-                log("log write failed:", e)
+            if self.stage is not None:
+                self.stage.submit(frame, addr)
+            else:
+                self.deliver(frame, addr)
+
+    def deliver(self, frame, addr):
+        """Frame is final (phone estimate, or the FPGA's): show it and log it."""
+        self.telem.add_frame(frame, addr)
+        try:
+            self.logger.frame(frame)
+        except OSError as e:
+            log("log write failed:", e)
 
     def stop(self):
         self.running = False
@@ -463,6 +471,11 @@ class Dashboard:
         self.telem = Telemetry()
         self.logger = SessionLogger(None if args.no_log else Path(args.log_dir))
         self.udp = UDPReceiver(self.telem, self.logger, args.udp_host, args.udp_port)
+        self.fpga = None
+        if getattr(args, "fpga", False):
+            from .fpga_filter import FpgaStage
+            self.fpga = FpgaStage(self.udp.deliver, backend=args.fpga_backend, log=log)
+            self.udp.stage = self.fpga
         self.phone = PhoneLink(self.telem, args.cmd_port, args.phone,
                                bonjour=not args.no_bonjour)
         self.httpd = ThreadingHTTPServer((args.bind, args.http_port), _make_handler(self))
@@ -473,6 +486,8 @@ class Dashboard:
         self.cmd_lock = threading.Lock()
 
     def start(self):
+        if self.fpga:
+            self.fpga.start()
         self.udp.start()
         threading.Thread(target=self.httpd.serve_forever, daemon=True, name="http").start()
         log(f"UDP telemetry on {self.args.udp_host}:{self.udp_port}; "
@@ -482,11 +497,15 @@ class Dashboard:
         self.httpd.shutdown()
         self.httpd.server_close()
         self.udp.stop()
+        if self.fpga:
+            self.fpga.stop()
         self.phone.close()
         self.logger.close()
 
     def command(self, req: dict) -> dict:
         reply = self.phone.send(req)
+        if self.fpga and req.get("cmd") in ("zero", "reset_distance", "start_run"):
+            self.fpga.reset_distance()           # the phone just zeroed its odometer; so does the FPGA side
         entry = {"time": time.time(), "req": req, "reply": reply}
         with self.cmd_lock:
             self.cmd_log.append(entry)
@@ -501,6 +520,7 @@ class Dashboard:
             "udp_port": self.udp_port,
             "last_frame": self.telem.last_frame,
             "server_time": time.time(),
+            "fpga": self.fpga.status() if self.fpga else None,
         }
 
 
@@ -641,6 +661,12 @@ def build_arg_parser():
     ap.add_argument("--log-dir", default=str(DEFAULT_LOG_DIR), help="session log root")
     ap.add_argument("--no-log", action="store_true", help="do not write CSV logs")
     ap.add_argument("--no-bonjour", action="store_true", help="disable dns-sd discovery")
+    ap.add_argument("--fpga", action="store_true",
+                    help="recompute the Kalman estimate on the simulated FPGA (fpga/) instead of "
+                         "showing the phone's; needs v2 frames and Icarus Verilog")
+    ap.add_argument("--fpga-backend", choices=("auto", "rtl", "model"), default="auto",
+                    help="rtl = clock-level Verilog simulation, model = Python model of the same "
+                         "processor, auto = rtl if iverilog is installed (default)")
     return ap
 
 

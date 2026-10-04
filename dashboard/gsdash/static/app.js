@@ -365,6 +365,7 @@ function renderStats() {
   if (age != null) cls = age < NO_SIGNAL_S ? (L.rate_hz >= 40 ? "ok" : "warn") : "bad";
   $("ldot").className = "ldot " + cls;
   const parts = [`${L.rate_hz.toFixed(1)} Hz`, `${L.lost} gaps`, `${L.crc_errors} crc`];
+  if (s.fpga) parts.unshift(`KF on FPGA (${s.fpga.backend}) load ${Math.round(s.fpga.load * 100)}%`);
   if (L.out_of_order) parts.push(`${L.out_of_order} ooo`);
   if (L.decode_errors) parts.push(`${L.decode_errors} bad`);
   parts.push(age == null ? "never" : age < 1 ? (age * 1000).toFixed(0) + " ms" : fmtAge(age));

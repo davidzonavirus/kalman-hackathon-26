@@ -87,6 +87,11 @@ F = I + Δt·[[0,  r, −1,  0],
 each; the app's picker and `meta.json` record which ran, and the replay tool runs
 all of them on the same log for the variant table.
 
+**C. Run it on an FPGA.** `fpga/` implements `ReferenceKF4` as hardware (a small fixed-point
+coprocessor in Verilog plus the filter as microcode), builds with Quartus, and is verified
+against a float port of `ReferenceKF4` (1e-9 m/s over every recorded run) and against the
+phone's own `est.csv`. `dashboard/run.sh --fpga` uses it live. See `fpga/README.md`.
+
 ## Verifying a filter (do this before the demo)
 
 ```bash
