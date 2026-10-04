@@ -1,0 +1,6 @@
+t,event,value
+91281.531129,start,
+91281.531129,camera,1280×720 @ 240 fps  FOV 73.3°; flow 239 Hz; proc 0.14 ms; in 11320 dropped 60 restarts 0; exp 1/1006 s ISO 1897; f 860.7 px (fov)
+91281.541157,filter_state,vx=0.00280958234 vy=-0.0346521863 bx=0.0649542512 by=0.0863564484 p=0.00135199186 0.00135199186 0.0019293431 0.0019293431
+91281.651458,camera,1280×720 @ 240 fps  FOV 73.3°; flow 240 Hz; proc 0.14 ms; in 11349 dropped 60 restarts 0; exp 1/1006 s ISO 1897; f 860.7 px (fov)
+91281.701595,stop,

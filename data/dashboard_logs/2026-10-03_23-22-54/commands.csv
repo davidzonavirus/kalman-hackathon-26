@@ -1,0 +1,5 @@
+recv_time,request,reply
+1791084176.945135,"{""cmd"": ""zero""}","{""cmd"": ""zero"", ""ok"": true}"
+1791084181.151909,"{""cmd"": ""measure_height""}","{""cmd"": ""measure_height"", ""h"": 0.7944465458989112, ""message"": ""LiDAR h = 0.794 m \u00b1 0.000 (43 frames, tilt 7\u00b0)"", ""ok"": true}"
+1791084187.461187,"{""cmd"": ""start_run""}","{""cmd"": ""start_run"", ""ok"": true, ""run"": ""2026-10-03_23-23-07""}"
+1791084200.000646,"{""cmd"": ""stop_run""}","{""cmd"": ""stop_run"", ""distance"": 4.1852649595599765, ""ok"": true, ""run"": ""2026-10-03_23-23-07""}"

@@ -84,6 +84,10 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     /// very different motion is the sensor's fixed pattern or a wrap, not the car (seen:
     /// 4.7 m/s → 0 in one frame at PSR 13, after which tracking never recovered).
     static let jumpBase = 8.0, jumpPerFrame = 2.0
+    /// Exactly-zero motion (< `zeroShift` full-res px) while `lastGood` is above `movingShift`
+    /// needs `relockPSR`: the fixed pattern peaks at zero with PSR 10–25, and a car cannot
+    /// stop within a lost-track interval (seen: locked at 0 while driving 5–6 m/s for 30 s).
+    static let zeroShift = 1.5, movingShift = 8.0
 
     // Cross-thread state.
     private let lock = NSLock()
@@ -550,7 +554,10 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             let ds = Double(correlator.downsample)
             if let s, s.psr >= Self.trackPSR {
                 let jump = hypot(s.dx * ds - lastGood.dx, s.dy * ds - lastGood.dy)
-                if s.psr >= Self.relockPSR || jump <= Self.jumpBase + Self.jumpPerFrame * Double(lostFrames) {
+                let fakeStop = hypot(s.dx * ds, s.dy * ds) < Self.zeroShift
+                    && hypot(lastGood.dx, lastGood.dy) > Self.movingShift
+                let confident = s.psr >= Self.relockPSR
+                if confident || (!fakeStop && jump <= Self.jumpBase + Self.jumpPerFrame * Double(lostFrames)) {
                     lastGood = (s.dx * ds, s.dy * ds)
                     lostFrames = 0
                     shift = s

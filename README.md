@@ -11,6 +11,8 @@ Kalman filter **on the phone**, streamed live to a MacBook dashboard.
 | `GroundSpeedKit/` | Swift package: `SpeedProtocol`, `KalmanCore`, `OpticalFlow`, `PhoneRuntime`, tools `kfreplay`, `phone-sim`, `gsk-checks` | David / Joseph |
 | `ios/` | SwiftUI iPhone app (XcodeGen project) | David |
 | `dashboard/` | Mac telemetry dashboard (Python stdlib + browser UI) | Sean |
+| `docs/HACKATHON_WRITEUP.md` | **Presentation write-up**: how it works, results, every bug we chased | all |
+| `data/` | Every run, dashboard session and LiDAR log from the hackathon, with a run guide | all |
 
 ## Quick start (no phone needed)
 

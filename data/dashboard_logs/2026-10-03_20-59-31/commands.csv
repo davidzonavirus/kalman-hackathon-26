@@ -1,0 +1,7 @@
+recv_time,request,reply
+1791075571.160917,"{""cmd"": ""measure_height""}","{""ok"": false, ""cmd"": ""measure_height"", ""error"": ""OSError: [Errno 65] No route to host"", ""local"": true}"
+1791075933.061114,"{""cmd"": ""start_run""}","{""ok"": false, ""cmd"": ""start_run"", ""error"": ""ConnectionRefusedError: [Errno 61] Connection refused"", ""local"": true}"
+1791075935.070772,"{""cmd"": ""stop_run""}","{""ok"": false, ""cmd"": ""stop_run"", ""error"": ""ConnectionRefusedError: [Errno 61] Connection refused"", ""local"": true}"
+1791075939.102366,"{""cmd"": ""calibrate""}","{""ok"": false, ""cmd"": ""calibrate"", ""error"": ""ConnectionRefusedError: [Errno 61] Connection refused"", ""local"": true}"
+1791075941.116109,"{""cmd"": ""measure_height""}","{""ok"": false, ""cmd"": ""measure_height"", ""error"": ""ConnectionRefusedError: [Errno 61] Connection refused"", ""local"": true}"
+1791075943.127248,"{""cmd"": ""measure_height""}","{""ok"": false, ""cmd"": ""measure_height"", ""error"": ""ConnectionRefusedError: [Errno 61] Connection refused"", ""local"": true}"

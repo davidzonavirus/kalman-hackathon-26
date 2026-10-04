@@ -1,0 +1,42 @@
+{
+  "app_version" : "0.1 (1)",
+  "battery_end" : 75,
+  "battery_start" : 75,
+  "device" : "iPhone iOS 27.0.1",
+  "end_t" : 83672.39522683334,
+  "filter_name" : "ReferenceKF4",
+  "focal_px" : 860.6556862016167,
+  "label" : null,
+  "mount_config" : {
+    "flow" : {
+      "flip_x" : false,
+      "flip_y" : true,
+      "swap_xy" : false
+    },
+    "flow_quality_threshold" : 8,
+    "imu" : {
+      "flip_x" : false,
+      "flip_y" : false,
+      "swap_xy" : false
+    },
+    "use_lidar" : true
+  },
+  "mount_height_m" : 0.3,
+  "q" : {
+    "q_accel" : 0.02,
+    "q_bias" : 1e-05
+  },
+  "r" : {
+    "gate" : 9,
+    "p0_b" : 0.01,
+    "p0_v" : 0.25,
+    "psr_min" : 8,
+    "psr_ref" : 20,
+    "r_flow_base" : 0.0016,
+    "r_zupt" : 0.0001
+  },
+  "run_id" : "2026-10-03_19-34-08",
+  "scale_factor" : 1,
+  "start_t" : 83659.677989,
+  "torch_level" : 0.5
+}
