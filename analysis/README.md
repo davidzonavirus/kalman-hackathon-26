@@ -9,6 +9,7 @@ lives in `analysis/out/`.
 | What | Where |
 |---|---|
 | Slideshow (16 slides) | `out/GroundSpeed_Forensics.pptx` (PNG renders in `out/slides_png/`) |
+| Team briefing / judge prep | `out/Team_Briefing_Judge_Prep.docx` (built by `11_build_briefing.py`) |
 | Machine-readable headline metrics | `out/final_metrics.json` |
 | Monte Carlo results | `out/mc_distance_summary.json`, `out/mc_velocity_summary.json`, `out/mc_*_samples.npz` |
 | Figures | `out/figures/*.png` |
@@ -40,6 +41,7 @@ use `\\?\` paths because the data paths exceed the 260-character limit (the repo
 | 8 | `08_story_figures.py` | chronology and before/after evidence figures |
 | 9 | `09_summary.py` | collects `final_metrics.json` |
 | 10 | `10_build_slides.py` | builds the PPTX from `final_metrics.json` and the figures |
+| 11 | `11_build_briefing.py` | builds the plain-language briefing and judge-prep document |
 
 `mc_kf.py` holds the vectorised filter; its `selftest()` feeds real measurements as identical trials and
 matches the scalar port to 1e-16 m/s, including GPS fusion.
@@ -122,8 +124,49 @@ plausible, not isolated), **HYPOTHESIS** (not tested by the data), **CORRECTION*
 
 ## 5. Results
 
-TBD_RESULTS
+All numbers: `out/final_metrics.json`. Bounds below are **prediction (uncertainty) intervals for one new measurement** (percentiles of simulated or observed error), not confidence intervals of a mean, unless labelled CI.
+
+### Distance (cart, 16 ft = 4.8768 m taped course, mount 0.186–0.235 m, indoor floor)
+
+| | Value | Type |
+|---|---|---|
+| Before any fix (runs 5–7) | +6.9 … +7.6 % | observed |
+| Final calibration, in-sample (6 runs) | bias -0.01 %, RMSE 0.24 % (12 mm), max 0.32 % (16 mm) | observed (optimistic: 2 params fitted on these runs) |
+| Leave-one-out | RMSE 0.41 %, max 0.54 %, 95 % CI of mean -0.47…+0.47 % | observed / t-CI (n = 6) |
+| 95 % prediction interval, new run (t, n = 6) | -1.23 … +1.23 % | statistical PI |
+| Monte Carlo, new run (N = 100,000) | SD 0.44 %; 95 % -0.88…+0.84 %; 99 % -1.17…+1.11 %; abs p95 0.86 % (4.2 cm) | MC prediction interval |
+| Monte Carlo, repeat run (cal fixed) | SD 0.39 %; 95 % -0.80…+0.74 % | MC |
+| Outside envelope | 79 cm mount −6.6/−16.7/−15.0 %; mid-run height change −6.2…−34.0 % | observed failures |
+
+### Velocity (car, final drive, GPS reference, GPS 2–11.2 m/s before the first overspeed)
+
+| | Value | Type |
+|---|---|---|
+| Bias / RMSE / SD | +0.07 / 0.63 / 0.64 m/s (n = 61, n_eff ≈ 7) | observed vs GPS |
+| Block-bootstrap 95 % CI | bias -0.09…+0.41; RMSE 0.40…0.73 m/s | CI |
+| abs error p50 / p90 / p95 / max | 0.40 / 1.08 / 1.19 / 1.71 m/s | observed |
+| Steady (abs accel < 0.3) / transient | RMSE 0.42 / 0.74 m/s | observed |
+| Best cruise segment | ratio 0.984, RMSE 0.27 m/s | observed |
+| Whole drive incl. zero-lock | RMSE 3.96 m/s | observed |
+| Monte Carlo (N = 100,000, 0–95 s) | SD 0.50 m/s; 95 % ±0.98; 99 % ±1.29 m/s; 10 s mean abs p95 0.62 m/s | MC prediction interval |
+| Dominant assumption | if half the slow drift is GPS's own error: 95 % -0.69…+0.70 m/s | MC sensitivity |
+
+Cart velocity has no time-resolved truth; its mean-speed error equals the distance error above.
+
+### Monte Carlo validation
+
+- Distance: convergence (random subsets) p95 0.84–0.86 %, 5 seeds within ±0.01 % (p99); analytic independent-term SD 0.43 % vs MC 0.44 %; LOO SD 0.44 % vs MC 0.44 %; frame-noise model (empirical / Gaussian / Student-t) does not change the bounds.
+- Velocity: convergence and 5 seeds stable to ±0.01 m/s; real vs simulated-with-GPS-noise SD 0.50 vs 0.53 m/s, abs p95 1.01 vs 1.03 m/s; real mean +0.19 m/s vs zero-mean model (bootstrap CI includes 0); filter's own white-noise sigma 12 mm/s ≪ observed error (no scale state).
+- Bug found and fixed during validation: one velocity sensitivity case used the relative drift SD in the additive model (rerun, documented in the summary JSON).
+
 
 ## 6. Assumptions (all of them)
 
-TBD_ASSUMPTIONS
+- Truth references: tape length exact; GPS Doppler speed is treated as the speed target, shifted by the fitted 0.65 s lag.
+- Distance truth in the MC = each push's own smoothed velocity profile scaled to the straight course; the MC normalises out the mean pipeline bias (−0.49 %) because the real calibration absorbed it.
+- LiDAR repeatability (0.60 mm) is treated as measurement error; if part of it was real mount movement, the MC is slightly conservative.
+- IMU bias SD 0.02 m/s² is assumed (not measured); its effect is negligible because the camera dominates.
+- The slow velocity drift (0.50 m/s, τ 2.9 s, additive, zero-mean) is derived from one drive (n_eff ≈ 7) and attributes all residual error beyond GPS white noise to the sensor; this is the dominant and least constrained assumption.
+- Calibration uncertainty is the least-squares covariance from 6 runs at 2 heights; applying it at 0.171 m (car) is a mild extrapolation.
+- Failures (blur above ~25 mph, zero-lock, high mounts, ride-height changes) are not simulated; bounds apply only inside the tested envelope.
+
