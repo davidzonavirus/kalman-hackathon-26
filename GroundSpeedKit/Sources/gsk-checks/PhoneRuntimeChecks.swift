@@ -16,6 +16,7 @@ func phoneRuntimeChecks(_ r: inout CheckRunner) {
     startMidMotionChecks(&r, dir: tmp.appendingPathComponent("midmotion"))
     flowLossChecks(&r)
     senderRoundtripChecks(&r)
+    fpgaReturnChecks(&r, dir: tmp.appendingPathComponent("fpga"))
     commandServerChecks(&r, dir: tmp.appendingPathComponent("cmd"))
 }
 
@@ -317,6 +318,45 @@ private func senderRoundtripChecks(_ r: inout CheckRunner) {
     sender.stop()
 }
 
+// MARK: - FPGA estimate return (PROTOCOL.md §4)
+
+/// A dashboard running the filter on the FPGA answers each telemetry frame with a JSON
+/// estimate sent back to the frame's source address; the runtime must pick it up on the
+/// sender's connection and expose it while fresh.
+private func fpgaReturnChecks(_ r: inout CheckRunner, dir: URL) {
+    guard let sock = UDPTestSocket() else { r.check("fpga: bind local socket", false); return }
+    defer { sock.close() }
+    var settings = RuntimeSettings()
+    settings.dashboardHost = "127.0.0.1"
+    settings.telemetryPort = sock.port
+    let rt = GroundSpeedRuntime(settings: settings, runsDirectory: dir, bonjourName: nil)
+    rt.sender.start()
+    defer { rt.sender.stop() }
+    r.check("fpga: no estimate before the dashboard sends one", rt.fpgaEstimate() == nil)
+
+    var from: sockaddr_in?
+    let d0 = Date().addingTimeInterval(2)
+    while from == nil, Date() < d0 { from = sock.receiveFrom(timeout: 0.5)?.1 }
+    guard let phone = from else { r.check("fpga: telemetry frame arrives", false); return }
+
+    // Not an estimate: ignored.
+    _ = sock.send(Data(#"{"seq":1,"t":2}"#.utf8), to: phone)
+    let est = #"{"type":"fpga_est","seq":9,"t":100.0,"v_x":1.5,"v_y":-0.25,"sigma_vx":0.02,"sigma_vy":0.03,"distance":4.0,"net_forward":3.5,"status":515,"backend":"rtl-iverilog"}"#
+    r.check("fpga: estimate datagram sent back to the phone's source port",
+            sock.send(Data(est.utf8), to: phone))
+    var got: FPGAEstimate?
+    let d1 = Date().addingTimeInterval(2)
+    while got == nil, Date() < d1 {
+        got = rt.fpgaEstimate(maxAge: 1.0)
+        if got == nil { Thread.sleep(forTimeInterval: 0.02) }
+    }
+    r.check("fpga: runtime exposes the returned estimate",
+            got?.vx == 1.5 && got?.distance == 4.0 && got?.backend == "rtl-iverilog", "\(String(describing: got))")
+    r.check("fpga: non-estimate datagram ignored", rt.fpgaEstimatesReceived == 1, "\(rt.fpgaEstimatesReceived)")
+    Thread.sleep(forTimeInterval: 0.6)
+    r.check("fpga: estimate goes stale after maxAge (phone filter takes over)", rt.fpgaEstimate(maxAge: 0.5) == nil)
+}
+
 /// Minimal blocking BSD UDP socket on 127.0.0.1:<ephemeral>.
 private final class UDPTestSocket {
     let fd: Int32
@@ -350,6 +390,31 @@ private final class UDPTestSocket {
         var buf = [UInt8](repeating: 0, count: 2048)
         let n = recv(fd, &buf, buf.count, 0)
         return n > 0 ? Data(buf[0..<n]) : nil
+    }
+
+    /// Like `receive`, plus the sender's address.
+    func receiveFrom(timeout: Double) -> (Data, sockaddr_in)? {
+        var tv = timeval(tv_sec: Int(timeout), tv_usec: Int32((timeout - floor(timeout)) * 1e6))
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var buf = [UInt8](repeating: 0, count: 2048)
+        var from = sockaddr_in()
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let n = withUnsafeMutablePointer(to: &from) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { recvfrom(fd, &buf, buf.count, 0, $0, &len) }
+        }
+        return n > 0 ? (Data(buf[0..<n]), from) : nil
+    }
+
+    func send(_ data: Data, to addr: sockaddr_in) -> Bool {
+        var a = addr
+        let n = data.withUnsafeBytes { raw in
+            withUnsafePointer(to: &a) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    sendto(fd, raw.baseAddress, data.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+        return n == data.count
     }
 
     func close() { Darwin.close(fd) }

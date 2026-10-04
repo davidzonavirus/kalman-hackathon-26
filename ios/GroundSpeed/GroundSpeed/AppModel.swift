@@ -15,6 +15,21 @@ final class LockedBox<T>: @unchecked Sendable {
     func set(_ v: T) { lock.withLock { value = v } }
 }
 
+/// What the main screen shows: the Kalman estimate computed on the FPGA while a dashboard
+/// (`--fpga`) is returning one, otherwise the phone's own filter.
+struct Readout: Equatable {
+    var distance: Double
+    var speed: Double
+    var vx: Double
+    var vy: Double
+    var sigmaVx: Double
+    var sigmaVy: Double
+    /// True when the numbers came back from the FPGA.
+    var fromFPGA: Bool
+    /// "FPGA · rtl-iverilog" or the phone filter's name.
+    var source: String
+}
+
 /// Weak handle to the model for runtime hooks built before `init` finishes.
 final class WeakModel: @unchecked Sendable {
     weak var model: AppModel?
@@ -27,6 +42,9 @@ final class AppModel: ObservableObject {
 
     // MARK: Published UI state
     @Published private(set) var snap = FusionSnapshot()
+    /// Newest estimate the dashboard computed on the FPGA (nil = none in the last 0.5 s).
+    @Published private(set) var fpga: FPGAEstimate?
+    @Published private(set) var fpgaReceived: UInt64 = 0
     @Published private(set) var settings: RuntimeSettings
     @Published private(set) var isRecording = false
     @Published private(set) var runId: String?
@@ -338,8 +356,22 @@ final class AppModel: ObservableObject {
 
     // MARK: Refresh
 
+    /// The phone's own filter, or the FPGA's estimate when a dashboard is sending it back.
+    var readout: Readout {
+        if let f = fpga {
+            return Readout(distance: f.distance, speed: f.speed, vx: f.vx, vy: f.vy,
+                           sigmaVx: f.sigmaVx, sigmaVy: f.sigmaVy, fromFPGA: true,
+                           source: "FPGA · \(f.backend)")
+        }
+        let s = snap
+        return Readout(distance: s.distance, speed: s.speed, vx: s.vx, vy: s.vy,
+                       sigmaVx: s.sigmaVx, sigmaVy: s.sigmaVy, fromFPGA: false, source: s.filterName)
+    }
+
     private func tick() {
         snap = runtime.engine.snapshot()
+        fpga = runtime.fpgaEstimate(maxAge: 0.5)
+        fpgaReceived = runtime.fpgaEstimatesReceived
         camera = cameraSource.status
         gnssHorizontalAcc = location.horizontalAccuracy
         gnssSpeedAcc = location.speedAccuracy

@@ -133,9 +133,16 @@ dashboard writes them into the simulated FPGA, runs predict (every frame), flow 
 frame has a new flow sample) and ZUPT (while the phone's ZUPT bit is set), and shows the FPGA's
 `v_x, v_y, sigma, distance` in place of the phone's (the phone's are kept in `frame["phone"]`).
 `/api/status` has an `fpga` block (backend, frames, load, simulated clocks) and the header shows
-the load. If the simulation falls behind, frames queued behind the newest are only predicted.
-At about 2000 simulated clocks per frame, Icarus Verilog runs it at ~60 frames/s on a laptop;
-a 50 Hz stream uses roughly 80% of one core.
+the load. Each estimate is also returned to the phone (UDP, `docs/PROTOCOL.md` §4) and the iPhone
+app displays it in place of its own filter's while it keeps arriving.
+
+A frame with a flow update is ~1,640 simulated clocks. Icarus Verilog ran 34 to 99 k clocks/s on
+the development laptop depending on its power state, i.e. 17 to 48 ms per frame against the
+phone's 20 ms. When it falls behind, frames queued behind newer ones are answered with the current
+estimate and the newest gets predict (over the gap) + flow update. Measured on a recorded drive
+replayed in real time at the slow end: 37 % of frames answered that way, FPGA vs phone v_x
+0.23 % median, 2.7 % worst (0.16 % median when every frame is simulated at 0.2x speed; the rest
+of that difference is the 50 Hz frames carrying only one of ~5 flow samples).
 
 ModelSim cannot be driven interactively through a pipe, so live mode uses Icarus Verilog.
 Everything offline (`replay.py`, `check_rtl.py`) uses ModelSim when Quartus is installed.

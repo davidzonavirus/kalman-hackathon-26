@@ -197,6 +197,11 @@ class UDPReceiver(threading.Thread):
             self.sock = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+        if hasattr(socket, "SIO_UDP_CONNRESET"):      # Windows: don't surface ICMP resets at all
+            try:
+                self.sock.ioctl(socket.SIO_UDP_CONNRESET, False)
+            except (OSError, ValueError):
+                pass
         self.sock.bind((host, port))
         self.sock.settimeout(0.5)
         self.port = self.sock.getsockname()[1]
@@ -205,10 +210,15 @@ class UDPReceiver(threading.Thread):
     def run(self):
         while self.running:
             try:
-                data, addr = self.sock.recvfrom(4096)
+                data, raw_addr = self.sock.recvfrom(4096)
+                addr = raw_addr
                 if addr[0].startswith("::ffff:"):
                     addr = (addr[0][7:], addr[1])
             except socket.timeout:
+                continue
+            except ConnectionResetError:
+                # Windows reports an ICMP "port unreachable" for an earlier sendto (an estimate
+                # returned to a phone that has gone) on the next receive: not fatal.
                 continue
             except OSError:
                 break
@@ -218,9 +228,17 @@ class UDPReceiver(threading.Thread):
                 self.telem.add_error(e)
                 continue
             if self.stage is not None:
-                self.stage.submit(frame, addr)
+                self.stage.submit(frame, addr, raw_addr)
             else:
                 self.deliver(frame, addr)
+
+    def send_to(self, payload: bytes, raw_addr):
+        """Datagram back to a phone, from the telemetry socket (the phone's UDP source port
+        receives it on the connection it sends telemetry from: PROTOCOL.md §4)."""
+        try:
+            self.sock.sendto(payload, raw_addr)
+        except OSError:
+            pass
 
     def deliver(self, frame, addr):
         """Frame is final (phone estimate, or the FPGA's): show it and log it."""
@@ -474,7 +492,8 @@ class Dashboard:
         self.fpga = None
         if getattr(args, "fpga", False):
             from .fpga_filter import FpgaStage
-            self.fpga = FpgaStage(self.udp.deliver, backend=args.fpga_backend, log=log)
+            self.fpga = FpgaStage(self.udp.deliver, backend=args.fpga_backend, log=log,
+                                  reply=self.udp.send_to)
             self.udp.stage = self.fpga
         self.phone = PhoneLink(self.telem, args.cmd_port, args.phone,
                                bonjour=not args.no_bonjour)
@@ -484,6 +503,7 @@ class Dashboard:
         self.udp_port = self.udp.port
         self.cmd_log = collections.deque(maxlen=100)
         self.cmd_lock = threading.Lock()
+        self.replay = None             # upload_replay.ReplayJob: an uploaded recording on the FPGA
 
     def start(self):
         if self.fpga:
@@ -497,15 +517,38 @@ class Dashboard:
         self.httpd.shutdown()
         self.httpd.server_close()
         self.udp.stop()
+        self.stop_replay()
         if self.fpga:
             self.fpga.stop()
         self.phone.close()
         self.logger.close()
 
+    def start_replay(self, files: dict, name: str, speed: float) -> dict:
+        from .upload_replay import ReplayJob
+        self.stop_replay()
+        try:
+            job = ReplayJob(self.udp.deliver, files, name=name, speed=speed,
+                            backend=getattr(self.args, "fpga_backend", "auto"), log=log)
+        except (ValueError, KeyError, json.JSONDecodeError) as e:
+            return {"ok": False, "error": str(e)}
+        except Exception as e:                       # noqa: BLE001 - no simulator, etc.
+            return {"ok": False, "error": f"cannot start the FPGA simulation: {e}"}
+        self.replay = job
+        job.start()
+        log(f"replaying {name!r} ({job.kind}) on the FPGA ({job.backend.name})")
+        return {"ok": True, "replay": job.status()}
+
+    def stop_replay(self):
+        if self.replay and not self.replay.done:
+            self.replay.stop()
+            self.replay.join(timeout=5)
+
     def command(self, req: dict) -> dict:
         reply = self.phone.send(req)
         if self.fpga and req.get("cmd") in ("zero", "reset_distance", "start_run"):
             self.fpga.reset_distance()           # the phone just zeroed its odometer; so does the FPGA side
+        elif self.fpga and req.get("cmd") == "stop_run":
+            self.fpga.hold_distance()            # run stopped: the distance stops counting
         entry = {"time": time.time(), "req": req, "reply": reply}
         with self.cmd_lock:
             self.cmd_log.append(entry)
@@ -521,6 +564,7 @@ class Dashboard:
             "last_frame": self.telem.last_frame,
             "server_time": time.time(),
             "fpga": self.fpga.status() if self.fpga else None,
+            "replay": self.replay.status() if self.replay else None,
         }
 
 
@@ -585,6 +629,16 @@ def _make_handler(dash: Dashboard):
                 if not isinstance(cmd, str) or not cmd:
                     return self._send_json({"ok": False, "error": "missing cmd"}, 400)
                 return self._send_json(dash.command(body))
+            if path == "/api/replay":
+                files = body.get("files")
+                if not isinstance(files, dict) or not files or not all(isinstance(v, str) for v in files.values()):
+                    return self._send_json({"ok": False, "error": "send {files: {name: text}}"}, 400)
+                speed = body.get("speed", 1.0)
+                speed = float(speed) if isinstance(speed, (int, float)) else 1.0
+                return self._send_json(dash.start_replay(files, str(body.get("name") or "recording"), speed))
+            if path == "/api/replay_stop":
+                dash.stop_replay()
+                return self._send_json({"ok": True})
             if path == "/api/phone":
                 dash.phone.set_explicit(body.get("ip"))
                 return self._send_json({"ok": True, "phone": dash.phone.status()})

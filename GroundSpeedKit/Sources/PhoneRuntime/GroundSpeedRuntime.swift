@@ -38,6 +38,9 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
     private var _dashboardPeer: String?
     private var _lastRunId: String?
     private var _lastRunDistance: Double?
+    /// Newest Kalman estimate a dashboard computed on the FPGA (PROTOCOL.md §4) + when it arrived.
+    private var _fpga: (estimate: FPGAEstimate, receivedAt: Double)?
+    private var _fpgaCount: UInt64 = 0
 
     public init(settings: RuntimeSettings, runsDirectory: URL = RunRecorder.defaultRunsDirectory(),
                 bonjourName: String? = nil) {
@@ -59,6 +62,15 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
             self.onStateChange?()
         }
         server.onClientCountChanged = { [weak self] _ in self?.onStateChange?() }
+        sender.onDatagram = { [weak self] data in
+            guard let self, let est = FPGAEstimate.decode(data) else { return }
+            let first = self.lock.withLock { () -> Bool in
+                self._fpga = (est, Clock.now())
+                self._fpgaCount &+= 1
+                return self._fpgaCount == 1
+            }
+            if first { self.engine.recordEvent("fpga_estimates", value: est.backend) }
+        }
     }
 
     // MARK: Lifecycle
@@ -85,6 +97,19 @@ public final class GroundSpeedRuntime: CommandHandling, @unchecked Sendable {
     public var lastRunId: String? { lock.withLock { _lastRunId } }
     /// Distance (m) of the most recently stopped run, at the moment it stopped.
     public var lastRunDistance: Double? { lock.withLock { _lastRunDistance } }
+
+    /// The newest estimate the dashboard computed on the FPGA, if it arrived within `maxAge`
+    /// seconds (nil: no dashboard is running the filter on the FPGA, or the link dropped, so
+    /// the phone's own filter is what counts).
+    public func fpgaEstimate(maxAge: Double = 0.5) -> FPGAEstimate? {
+        lock.withLock { () -> FPGAEstimate? in
+            guard let f = _fpga, Clock.now() - f.receivedAt <= maxAge else { return nil }
+            return f.estimate
+        }
+    }
+
+    /// Number of FPGA estimates received since launch.
+    public var fpgaEstimatesReceived: UInt64 { lock.withLock { _fpgaCount } }
 
     /// Apply new settings (pushes to engine/sender). Filter changes reset the filter.
     public func apply(_ new: RuntimeSettings) {

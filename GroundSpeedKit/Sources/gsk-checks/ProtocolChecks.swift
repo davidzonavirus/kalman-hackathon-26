@@ -122,4 +122,20 @@ func protocolChecks(_ r: inout CheckRunner) {
                                  "battery_start", "battery_end", "q", "r"]
     r.check("meta.json keys", jsonKeys(mj) == metaKeys)
     r.check("meta.json roundtrip", (try? JSONDecoder().decode(RunMeta.self, from: mj)) == meta)
+
+    // FPGA estimate return (PROTOCOL.md §4): exactly what dashboard/gsdash/protocol.py emits.
+    let pyEst = #"{"type":"fpga_est","seq":7,"t":12.5,"v_x":1.25,"v_y":-0.5,"sigma_vx":0.02,"sigma_vy":0.03,"distance":3.0,"net_forward":2.5,"status":513,"backend":"rtl-iverilog"}"#
+    let est = FPGAEstimate.decode(Data(pyEst.utf8))
+    r.check("fpga_est from the Python dashboard decodes",
+            est == FPGAEstimate(seq: 7, t: 12.5, vx: 1.25, vy: -0.5, sigmaVx: 0.02, sigmaVy: 0.03,
+                                distance: 3.0, netForward: 2.5, status: [.imuOK, .filterInit],
+                                backend: "rtl-iverilog"),
+            "\(String(describing: est))")
+    if let est {
+        r.check("fpga_est encode→decode roundtrip", FPGAEstimate.decode(est.encodeJSON()) == est)
+        r.check("fpga_est keys", jsonKeys(est.encodeJSON()) == jsonKeys(Data(pyEst.utf8)))
+    }
+    r.check("fpga_est: a telemetry JSON frame is not an estimate", FPGAEstimate.decode(f.encodeJSON()) == nil)
+    r.check("fpga_est: a binary frame is not an estimate", FPGAEstimate.decode(bin) == nil)
+    r.check("fpga_est: garbage is ignored", FPGAEstimate.decode(Data("{oops".utf8)) == nil)
 }

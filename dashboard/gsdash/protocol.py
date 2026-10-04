@@ -214,6 +214,40 @@ def decode_frame(data: bytes) -> dict:
     return frame
 
 
+# FPGA estimate return (PROTOCOL.md §4): dashboard -> phone, UDP, sent from the dashboard's
+# telemetry socket back to the address the phone's frame came from. One JSON object per datagram.
+FPGA_EST_TYPE = "fpga_est"
+FPGA_EST_FLOATS = ("t", "v_x", "v_y", "sigma_vx", "sigma_vy", "distance", "net_forward")
+
+
+def encode_fpga_estimate(frame: dict, backend: str) -> bytes | None:
+    """The FPGA's estimate for one phone frame, or None if a value is missing / not finite."""
+    obj = {"type": FPGA_EST_TYPE, "seq": int(frame.get("seq") or 0) & 0xFFFFFFFF}
+    for k in FPGA_EST_FLOATS:
+        v = frame.get(k)
+        if v is None or not math.isfinite(v):
+            return None
+        obj[k] = float(v)
+    obj["status"] = int(frame.get("status") or 0) & 0xFFFF
+    obj["backend"] = backend
+    return json.dumps(obj, separators=(",", ":")).encode()
+
+
+def decode_fpga_estimate(data: bytes) -> dict | None:
+    """Parse an estimate datagram; None for anything else (receivers ignore unknown keys)."""
+    if not data or data[:1] != b"{":
+        return None
+    try:
+        obj = json.loads(data)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(obj, dict) or obj.get("type") != FPGA_EST_TYPE:
+        return None
+    if not all(isinstance(obj.get(k), (int, float)) for k in FPGA_EST_FLOATS):
+        return None
+    return obj
+
+
 def encode_command(cmd: str, **kw) -> bytes:
     """One newline-terminated JSON command line, e.g. encode_command('set_torch', level=0.6)."""
     obj = {"cmd": cmd}

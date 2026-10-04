@@ -128,3 +128,33 @@ Speed `|v| = hypot(v_x, v_y)` is derived by receivers.
 
 New command: `{"cmd":"zero"}`: zero distance + net_forward and re-estimate IMU bias (phone
 must be still ~1 s). Reply `{"ok":true,"cmd":"zero"}`.
+
+---
+
+## 4. FPGA estimate return: dashboard → phone (UDP, same socket)
+
+When the dashboard runs the Kalman filter on the simulated FPGA (`dashboard/run.sh --fpga`, see
+`fpga/README.md`), it answers every v2 telemetry frame it processed with the FPGA's estimate.
+The datagram is sent **from the dashboard's telemetry socket (UDP 9000) to the source address
+of that frame**, so it arrives on the UDP connection the phone already sends telemetry from: no
+new port, no firewall rule, nothing to configure on the phone. One UTF-8 JSON object per
+datagram:
+
+```
+{"type":"fpga_est","seq":1234,"t":5012.31,"v_x":1.02,"v_y":-0.01,"sigma_vx":0.02,"sigma_vy":0.02,
+ "distance":4.81,"net_forward":4.79,"status":547,"backend":"rtl-iverilog"}
+```
+
+| Key | Meaning |
+|---|---|
+| `type` | always `"fpga_est"` (anything else on this socket is ignored) |
+| `seq`, `t` | the phone frame this answers (its `seq` and `t`) |
+| `v_x`, `v_y`, `sigma_vx`, `sigma_vy` | the FPGA's estimate after that frame (m/s, 1σ) |
+| `distance`, `net_forward` | m, integrated by the dashboard from the FPGA's velocity; reset on start_run / zero / reset_distance, frozen on stop_run |
+| `status` | the frame's status bits with FLOW_GATED / FILTER_INIT from the FPGA's own outcomes |
+| `backend` | `rtl-iverilog` (clock-level Verilog) or `python-model` (Python model of the same processor) |
+
+Rate: one per processed frame (≤ 50 Hz). Values are never NaN (such frames are not answered).
+The phone shows these numbers while they keep arriving and falls back to its own filter when
+none has arrived for 0.5 s (`GroundSpeedRuntime.fpgaEstimate(maxAge:)`). Receivers ignore
+unknown keys. A dashboard without `--fpga` sends nothing back.

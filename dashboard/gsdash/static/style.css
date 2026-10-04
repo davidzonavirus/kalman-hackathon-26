@@ -207,3 +207,14 @@ summary:hover { color: var(--ink); }
   .side { border-left: 0; border-top: 1px solid var(--rule); padding: .9em 16px; overflow: visible; }
   .runs .tablewrap { max-height: 50vh; }
 }
+
+/* replay-a-recording box */
+.replay { display: flex; flex-direction: column; gap: .4em; padding: .6em 0; border-top: 1px solid var(--rule); }
+.replay select { font: inherit; font-size: .8em; background: none; color: var(--ink); border: 0; border-bottom: 1px solid var(--rule); }
+.replay .row { display: flex; gap: .8em; }
+.replay .tb { padding-left: 0; border-left: 0; }
+.rstatus { font-size: .78em; color: var(--ink-2, var(--ink)); line-height: 1.35; }
+.rstatus.err { color: var(--bad, #c0392b); }
+.rbar { height: 3px; background: var(--rule); }
+.rbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.replay.drag { outline: 1px dashed var(--accent); outline-offset: 4px; }

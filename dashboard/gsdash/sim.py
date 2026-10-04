@@ -6,7 +6,8 @@ Streams 50 Hz v2 telemetry (or v1 with --v1) of a looping 10 m rest-to-rest push
 alternates forward and backward, so total distance grows while net_forward returns to ~0.
 Each push has a 2 s "lens covered" segment (FLOW_OK off, sigma growing). Serves the
 TCP 9001 command protocol, including "zero". Like the real phone, it adopts the IP of a
-TCP command client as its UDP destination.
+TCP command client as its UDP destination, and it accepts the Kalman estimates a dashboard
+running with --fpga sends back on the telemetry socket (PROTOCOL.md §4).
 """
 from __future__ import annotations
 
@@ -55,6 +56,27 @@ class FakePhone:
         self.running = True
         self.t0 = time.monotonic()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
+        # Estimates a dashboard running the Kalman filter on the FPGA sends back (PROTOCOL.md §4).
+        self.fpga_est = None
+        self.fpga_est_count = 0
+        self.fpga_est_at = None
+
+    def poll_estimates(self):
+        """Read every FPGA estimate datagram waiting on the telemetry socket."""
+        while True:
+            try:
+                data, _ = self.sock.recvfrom(4096)
+            except (BlockingIOError, InterruptedError):
+                return
+            except OSError:          # e.g. Windows reports ICMP port-unreachable here
+                return
+            est = P.decode_fpga_estimate(data)
+            if est is not None:
+                with self.lock:
+                    self.fpga_est = est
+                    self.fpga_est_count += 1
+                    self.fpga_est_at = time.monotonic()
 
     # ---- motion model
     def truth(self, t):
@@ -147,6 +169,7 @@ class FakePhone:
             now = time.monotonic()
             t = now - self.t0 + 1000.0   # pretend mach uptime
             self.step(t, period if last is None else min(now - last, 0.2))
+            self.poll_estimates()
             last = now
             nxt += period
             delay = nxt - time.monotonic()
@@ -258,8 +281,12 @@ def main(argv=None):
     try:
         while True:
             time.sleep(5)
-            print(f"[sim] sent {phone.sent} dropped {phone.dropped} "
-                  f"dist {phone.distance:.2f} m", file=sys.stderr)
+            line = f"[sim] sent {phone.sent} dropped {phone.dropped} dist {phone.distance:.2f} m"
+            est = phone.fpga_est
+            if est is not None and time.monotonic() - phone.fpga_est_at < 1.0:
+                line += (f" | FPGA estimate back ({phone.fpga_est_count}): v_x {est['v_x']:+.3f} m/s, "
+                         f"dist {est['distance']:.2f} m ({est.get('backend', '?')})")
+            print(line, file=sys.stderr)
     except KeyboardInterrupt:
         pass
     finally:

@@ -365,6 +365,7 @@ function renderStats() {
   if (age != null) cls = age < NO_SIGNAL_S ? (L.rate_hz >= 40 ? "ok" : "warn") : "bad";
   $("ldot").className = "ldot " + cls;
   const parts = [`${L.rate_hz.toFixed(1)} Hz`, `${L.lost} gaps`, `${L.crc_errors} crc`];
+  renderReplay(s.replay);
   if (s.fpga) parts.unshift(`KF on FPGA (${s.fpga.backend}) load ${Math.round(s.fpga.load * 100)}%`);
   if (L.out_of_order) parts.push(`${L.out_of_order} ooo`);
   if (L.decode_errors) parts.push(`${L.decode_errors} bad`);
@@ -799,6 +800,44 @@ const slider = $("torch-slider");
 let sliderTouched = 0;
 slider.oninput = () => { sliderTouched = performance.now(); $("torch-val").textContent = slider.value + "%"; };
 slider.onchange = () => { sliderTouched = performance.now(); slider.blur(); send({ cmd: "set_torch", level: Math.round(slider.value) / 100 }); };
+// ------------------------------------------------------------------ replay an uploaded recording
+async function uploadFiles(fileList) {
+  const files = {};
+  const list = Array.from(fileList);
+  if (!list.length) return;
+  const status = $("replay-status");
+  status.classList.remove("err"); status.textContent = "reading " + list.length + " file(s)…";
+  for (const f of list) files[f.webkitRelativePath || f.name] = await f.text();
+  const first = list[0].webkitRelativePath ? list[0].webkitRelativePath.split("/")[0] : list.map((f) => f.name).join(" + ");
+  let rep;
+  try {
+    const r = await fetch("/api/replay", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: first, files, speed: parseFloat($("replay-speed").value) || 1 }) });
+    rep = await r.json();
+  } catch (e) { rep = { ok: false, error: "dashboard server unreachable" }; }
+  if (!rep.ok) { status.classList.add("err"); status.textContent = rep.error || "could not start the replay"; }
+}
+function renderReplay(rp) {
+  const status = $("replay-status"), wrap = $("replay-bar-wrap"), stop = $("btn-replay-stop");
+  if (!rp) return;
+  const run = rp.running;
+  wrap.hidden = false; $("replay-bar").style.width = Math.round(rp.progress * 100) + "%";
+  stop.hidden = !run;
+  status.classList.toggle("err", !!rp.error);
+  if (rp.error) { status.textContent = "replay failed: " + rp.error; return; }
+  const what = rp.kind === "run" ? "phone run" : "dashboard log";
+  status.textContent = (run ? "replaying " : "finished ") + what + " " + rp.name + " on the FPGA (" + rp.backend + ") · "
+    + Math.round(rp.progress * 100) + "% · " + rp.recording_s + " s of recording in " + rp.wall_s + " s"
+    + (rp.kind === "run" ? " · flow " + rp.flow_accepted + " ok / " + rp.flow_gated + " gated" : "");
+}
+$("btn-upload").onclick = () => $("file-input").click();
+$("file-input").onchange = (e) => { uploadFiles(e.target.files); e.target.value = ""; };
+$("btn-replay-stop").onclick = () => fetch("/api/replay_stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+const rbox = $("replay-box");
+["dragenter", "dragover"].forEach((ev) => rbox.addEventListener(ev, (e) => { e.preventDefault(); rbox.classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) => rbox.addEventListener(ev, (e) => { e.preventDefault(); rbox.classList.remove("drag"); }));
+rbox.addEventListener("drop", (e) => uploadFiles(e.dataTransfer.files));
+
 $("btn-phone").onclick = async () => {
   const ip = $("phone-input").value.trim();
   await fetch("/api/phone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ip }) });

@@ -63,8 +63,48 @@ columns of the v2 frame (a_x, a_y, gyro z, flow v_x / v_y / PSR):
 The FPGA's v_x, v_y, sigma, distance and net forward replace the phone's in the charts and in
 `telemetry.csv` (the phone's values are kept in memory as `frame["phone"]`). The header shows
 `KF on FPGA (rtl-iverilog) load 60%`; `/api/status` has an `fpga` block. Zero / Start /
-Reset-distance also zero the FPGA side's odometer. v1 frames have no raw columns and pass
-through untouched. How it works and how it was verified: `fpga/README.md`.
+Reset-distance also zero the FPGA side's odometer, and Stop tracking (or the phone's recording
+ending) freezes it. v1 frames have no raw columns and pass through untouched. How it works and
+how it was verified: `fpga/README.md`.
+
+**Back to the phone.** Every estimate is also sent back to the phone, as a small JSON datagram
+from the dashboard's UDP 9000 to the port the phone's telemetry came from (`docs/PROTOCOL.md`
+§4). The iPhone app then shows the FPGA's distance, speed and velocities, with "Kalman filter
+running on the FPGA" under the title and an FPGA dot in the status row, and its own filter's speed
+on the diagnostics line for comparison. If no estimate arrives for 0.5 s (dashboard stopped,
+Wi-Fi drop) it falls back to its own filter. Nothing to configure on either side.
+`/api/status` → `fpga.estimates_returned` counts them, and `python -m gsdash.sim` prints the
+estimates it gets back.
+
+With a real phone:
+
+```sh
+python -m gsdash --fpga            # Windows (or ./run.sh --fpga), then open the app on the phone
+```
+
+If the simulation is slower than the phone's 50 Hz (every flow update is ~1,250 simulated clocks;
+how fast that runs depends on the laptop and its power mode), frames queued behind newer ones are
+answered with the current estimate and the newest frame gets the full predict + flow update
+("latest wins"); `fpga.skipped_frames` counts them. On a recorded 4.3 m/s drive replayed in real
+time with ~37 % of frames answered that way, the FPGA's v_x stayed within 0.23 % (median) and
+2.7 % (worst) of the phone's own estimate.
+
+### Replay a recording on the FPGA
+
+The side panel has a **Replay a recording on the FPGA** box (drop files on it or **Choose files…**).
+It works without a phone and without `--fpga`, but needs Icarus Verilog for the clock-level
+simulation (otherwise it falls back to the Python model of the same processor).
+
+| Upload | Files | What happens |
+|---|---|---|
+| A phone run | `imu.csv` + `flow.csv` from a `data/phone_runs/<run>/` folder; optionally `gnss.csv`, `events.csv` (the ZUPTs) and `meta.json` (filter settings) | Every IMU, flow, GNSS and ZUPT sample is one FPGA command, at the recorded rate. Matches the Python filter to ~1e-9 m/s. Shown as a run (recording bit on, then off) |
+| A dashboard log | `telemetry.csv` from `data/dashboard_logs/<session>/` | The 50 Hz frames go through the same FPGA stage as live data. Differs slightly from the phone's own estimate because the frames are decimated |
+
+Playback follows the recording's clock (real time, 0.5x, 0.25x) but never runs faster than the
+simulation can compute: roughly 0.1 to 0.3x real time for a full-rate phone run, because every
+240 Hz flow sample is a 1,250-clock command. "As fast as possible" removes the pacing, not that
+limit. **Stop** ends a replay. The API is `POST /api/replay` with `{"name", "files": {name: text},
+"speed"}` and `POST /api/replay_stop`; progress is in `/api/status` under `replay`.
 
 ## At the venue
 

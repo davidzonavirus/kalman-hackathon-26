@@ -7,11 +7,16 @@ import SpeedProtocol
 /// The sender pulls the latest frame from `frameSource` on its own timer, stamps the
 /// sequence number, and sends it binary (default) or as a JSON debug datagram.
 /// The destination can be changed at any time (e.g. when a dashboard connects over TCP).
+/// Anything the dashboard sends back to our source port is handed to `onDatagram`.
 public final class TelemetrySender: @unchecked Sendable {
     public static let defaultPort: UInt16 = 9000
 
     /// Returns the frame to send (seq is overwritten by the sender). nil = skip this tick.
     public var frameSource: (@Sendable () -> TelemetryFrame?)?
+    /// Datagrams the dashboard sends back to our source port (PROTOCOL.md §4: the Kalman
+    /// estimate computed on the FPGA). Called on the sender's queue. Set before `start()`.
+    public var onDatagram: (@Sendable (Data) -> Void)?
+    private var _datagramsReceived: UInt64 = 0
 
     private let queue = DispatchQueue(label: "gsk.telemetry", qos: .userInitiated)
     private var connection: NWConnection?
@@ -47,6 +52,7 @@ public final class TelemetrySender: @unchecked Sendable {
     public var lastError: String? { queue.sync { _lastError } }
     public var isReady: Bool { queue.sync { _connectionReady } }
     public var isRunning: Bool { queue.sync { timer != nil } }
+    public var datagramsReceived: UInt64 { queue.sync { _datagramsReceived } }
 
     public var useJSON: Bool {
         get { queue.sync { _useJSON } }
@@ -132,6 +138,28 @@ public final class TelemetrySender: @unchecked Sendable {
         }
         connection = c
         c.start(queue: queue)
+        receiveLocked(c)
+    }
+
+    /// Reads whatever the dashboard sends back on this connection, for as long as it is current.
+    private func receiveLocked(_ c: NWConnection) {
+        c.receiveMessage { [weak self, weak c] data, _, _, error in
+            // Runs on self.queue.
+            guard let self, let c, c === self.connection else { return }
+            if let data, !data.isEmpty {
+                self._datagramsReceived &+= 1
+                self.onDatagram?(data)
+            }
+            if error == nil {
+                self.receiveLocked(c)
+            } else {
+                // e.g. ICMP port unreachable while the dashboard is down: keep listening.
+                self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self, weak c] in
+                    guard let self, let c, c === self.connection else { return }
+                    self.receiveLocked(c)
+                }
+            }
+        }
     }
 
     private func tickLocked() {

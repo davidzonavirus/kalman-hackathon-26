@@ -24,36 +24,56 @@ import kf_rtl  # noqa: E402
 FPGA = Path(__file__).resolve().parents[1]
 OUT = FPGA / "sim" / "build" / "wave"
 
-WAVE_DO = """\
-quietly set sig /tb_wave
+WAVE_DO = """quietly set sig /tb_wave
 add wave -divider {host command}
 add wave -color Gold -radix ascii $sig/cmd_name
 add wave $sig/clk
 add wave $sig/busy
 add wave $sig/done
 add wave -divider {inputs (written by the host)}
-add wave -format Analog-Step -height 60 -min -1 -max 1 -color Cyan $sig/in_ax
-add wave -format Analog-Step -height 60 -min -1 -max 1 -color Cyan $sig/in_ay
-add wave -format Analog-Step -height 60 -min -0.5 -max 0.5 -color Cyan $sig/in_gyro_z
-add wave -format Analog-Step -height 60 -min -1 -max 1 -color Orange $sig/in_flow_vx
-add wave -format Analog-Step -height 40 -min 0 -max 3000 -color Orange $sig/in_flow_psr
+add wave -format Analog-Step -height 60 -min @AX@ -color Cyan $sig/in_ax
+add wave -format Analog-Step -height 60 -min @AY@ -color Cyan $sig/in_ay
+add wave -format Analog-Step -height 60 -min @GZ@ -color Cyan $sig/in_gyro_z
+add wave -format Analog-Step -height 60 -min @FVX@ -color Orange $sig/in_flow_vx
+add wave -format Analog-Step -height 40 -min @PSR@ -color Orange $sig/in_flow_psr
 add wave -divider {outputs (read back from the filter)}
-add wave -format Analog-Step -height 80 -min -1 -max 0.3 -color Green $sig/out_vx
-add wave -format Analog-Step -height 50 -min -0.1 -max 0.1 -color Green $sig/out_vy
-add wave -format Analog-Step -height 50 -min 0 -max 0.2 -color Magenta $sig/out_sigma_vx
-add wave -format Analog-Step -height 50 -min -0.1 -max 0.1 -color Yellow $sig/out_bias_x
+add wave -format Analog-Step -height 80 -min @VX@ -color Green $sig/out_vx
+add wave -format Analog-Step -height 50 -min @VY@ -color Green $sig/out_vy
+add wave -format Analog-Step -height 50 -min @SIG@ -color Magenta $sig/out_sigma_vx
+add wave -format Analog-Step -height 50 -min @BX@ -color Yellow $sig/out_bias_x
 add wave -format Analog-Step -height 30 -min 0 -max 2 -color Red $sig/out_status
 add wave -divider {Python reference (kf_ref.py) on top of the FPGA outputs}
-add wave -format Analog-Step -height 80 -min -1 -max 0.3 -color White $sig/ref_vx
-add wave -format Analog-Step -height 50 -min 0 -max 0.2 -color White $sig/ref_sigma_vx
-add wave -divider {error = FPGA minus Python (m/s)}
+add wave -format Analog-Step -height 80 -min @VX@ -color White $sig/ref_vx
+add wave -format Analog-Step -height 50 -min @SIG@ -color White $sig/ref_sigma_vx
+add wave -divider {error = FPGA minus Python}
 add wave -format Analog-Step -height 60 -min -1e-8 -max 1e-8 -color Red $sig/err_vx
 add wave -format Analog-Step -height 60 -min -1e-8 -max 1e-8 -color Red $sig/err_vy
+add wave -format Analog-Step -height 60 -min 0 -max 1e-7 -color Red $sig/err_pct_vx
 add wave -divider {processor internals}
 add wave -radix unsigned $sig/pc
 add wave -radix unsigned $sig/opcode
 add wave $sig/dut/state
 """
+
+COLS = ("n", "cmd", "ax", "ay", "gz", "fvx", "psr", "vx", "vy", "bx", "by", "sigx", "sigy")
+
+
+def scaled_wave_do(csv_lines):
+    """WAVE_DO with every analog trace's -min/-max taken from the data (10 % padding)."""
+    rows = [dict(zip(COLS, l.split(","))) for l in csv_lines]
+
+    def rng(key, floor0=False):
+        v = [float(r[key]) for r in rows]
+        lo, hi = (0.0 if floor0 else min(v)), max(v)
+        pad = (hi - lo) * 0.1 or 1e-3
+        return f"{lo - (0 if floor0 else pad):.6g} -max {hi + pad:.6g}"
+
+    out = WAVE_DO
+    for tok, key, f0 in (("AX", "ax", 0), ("AY", "ay", 0), ("GZ", "gz", 0), ("FVX", "fvx", 0),
+                         ("PSR", "psr", 1), ("VX", "vx", 0), ("VY", "vy", 0), ("SIG", "sigx", 1),
+                         ("BX", "bx", 0)):
+        out = out.replace(f"@{tok}@", rng(key, bool(f0)))
+    return out
 
 
 class Dual:
@@ -132,7 +152,7 @@ def main(argv=None):
     (OUT / "ref_commands.csv").write_text(
         "n,command,in_ax,in_ay,in_gyro_z,in_flow_vx,in_flow_psr,v_x,v_y,bias_x,bias_y,sigma_vx,sigma_vy\n" + "\n".join(f.csv_lines) + "\n")
     tail = "wave zoom full\n" if a.batch else "run -all\nwave zoom full\n"
-    (OUT / "wave.do").write_text(WAVE_DO + ("run -all\nquit -f\n" if a.batch else tail))
+    (OUT / "wave.do").write_text(scaled_wave_do(f.csv_lines) + ("run -all\nquit -f\n" if a.batch else tail))
     print(f"{Path(a.run).name} ticks {i0}..{i1}: {len(rec.lines)} host accesses -> {OUT}")
 
     vsim, vlog, vlib = kf_rtl.which("vsim"), kf_rtl.which("vlog"), kf_rtl.which("vlib")

@@ -46,6 +46,7 @@ module tb_wave;
     real ref_vx, ref_vy, ref_bias_x, ref_bias_y, ref_sigma_vx, ref_sigma_vy;
     real err_vx, err_vy, err_sigma_vx;                   // FPGA minus Python, sampled after each command
     real max_err_vx, max_err_vy, max_err_sigma;
+    real err_pct_vx, max_err_pct;                        // percent error of v_x where |v_x| > 0.05 m/s
     integer fr, rcode, have_ref, fo;
     reg [7:0] verb;
     reg [W-1:0] v1, v2;
@@ -61,7 +62,7 @@ module tb_wave;
         have_ref = (fr != 0);
         fo = $fopen("fpga_waveform.csv", "w");
         $fdisplay(fo, "n,time_ps,command,in_ax,in_ay,in_gyro_z,in_flow_vx,in_flow_psr,v_x,v_y,bias_x,sigma_vx,status");
-        max_err_vx = 0.0; max_err_vy = 0.0; max_err_sigma = 0.0;
+        max_err_vx = 0.0; max_err_vy = 0.0; max_err_sigma = 0.0; err_pct_vx = 0.0; max_err_pct = 0.0;
         err_vx = 0.0; err_vy = 0.0; err_sigma_vx = 0.0;
         ref_vx = 0.0; ref_vy = 0.0; ref_bias_x = 0.0; ref_bias_y = 0.0; ref_sigma_vx = 0.0; ref_sigma_vy = 0.0;
         ncmd = 0;
@@ -97,9 +98,11 @@ module tb_wave;
                         err_vx = q(dut.rfa[R_X0]) - ref_vx;
                         err_vy = q(dut.rfa[R_X1]) - ref_vy;
                         err_sigma_vx = $sqrt(q(dut.rfa[R_P00])) - ref_sigma_vx;
+                        err_pct_vx = (absr(ref_vx) > 0.05) ? 100.0 * absr(err_vx) / absr(ref_vx) : 0.0;
                         if (ncmd > 0) begin              // command 0 is the seed
                             if (absr(err_vx) > max_err_vx) max_err_vx = absr(err_vx);
                             if (absr(err_vy) > max_err_vy) max_err_vy = absr(err_vy);
+                            if (err_pct_vx > max_err_pct) max_err_pct = err_pct_vx;
                             if (absr(err_sigma_vx) > max_err_sigma) max_err_sigma = absr(err_sigma_vx);
                         end
                     end
@@ -117,6 +120,7 @@ module tb_wave;
             $display("  max |v_x error|     = %g m/s", max_err_vx);
             $display("  max |v_y error|     = %g m/s", max_err_vy);
             $display("  max |sigma_vx error|= %g m/s", max_err_sigma);
+            $display("  max v_x percent error = %g %%", max_err_pct);
         end
         $stop;
     end

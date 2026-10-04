@@ -85,6 +85,17 @@
       <span class="hint" id="target-alt"></span>
     </div>
 
+    <div class="replay" id="replay-box">
+      <div class="runshead"><span class="cap">Replay a recording on the FPGA</span><span class="spacer"></span>
+        <select id="replay-speed" class="num" aria-label="playback speed">
+          <option value="1">real time</option><option value="0.5">0.5 x</option><option value="0.25">0.25 x</option><option value="1000">as fast as possible</option>
+        </select></div>
+      <div class="row"><button class="tb" id="btn-upload">Choose files…</button><button class="tb" id="btn-replay-stop" hidden>Stop</button></div>
+      <input id="file-input" type="file" multiple accept=".csv,.json" hidden>
+      <div class="rstatus num" id="replay-status">Drop or choose a phone run (imu.csv + flow.csv, optionally gnss.csv, events.csv, meta.json) or a dashboard telemetry.csv.</div>
+      <div class="rbar" id="replay-bar-wrap" hidden><i id="replay-bar"></i></div>
+    </div>
+
     <div class="runs">
       <div class="runshead"><span class="cap">Runs</span><span class="spacer"></span><button class="link" id="btn-export">Export CSV</button><button class="link" id="btn-clear">Clear</button></div>
       <div class="tablewrap">

@@ -64,7 +64,10 @@ private struct TitleRow: View {
                 Text("Ground Speed")
                     .font(Theme.serif(22))
                     .foregroundStyle(Theme.ink)
-                Micro(model.isRecording ? "rec · \(model.runId ?? "")" : model.snap.filterName)
+                Micro(model.isRecording ? "rec · \(model.runId ?? "")" : model.readout.source)
+                if model.readout.fromFPGA {
+                    Micro("Kalman filter running on the FPGA", color: Theme.live)
+                }
             }
             Spacer()
             Button {
@@ -91,18 +94,18 @@ private struct DistanceBlock: View {
         VStack(alignment: .leading, spacing: 6) {
             Micro(model.isRecording ? "Distance · this run" : "Distance")
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(String(format: "%.2f", model.snap.distance))
+                Text(String(format: "%.2f", model.readout.distance))
                     .font(Theme.mono(88))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                    .contentTransition(.numericText(value: model.snap.distance))
-                    .animation(.easeOut(duration: 0.15), value: model.snap.distance)
+                    .contentTransition(.numericText(value: model.readout.distance))
+                    .animation(.easeOut(duration: 0.15), value: model.readout.distance)
                 Text("m")
                     .font(Theme.serif(22))
                     .foregroundStyle(Theme.inkSoft)
             }
-            SpeedLine(speed: model.snap.speed)
+            SpeedLine(speed: model.readout.speed)
         }
     }
 }
@@ -136,11 +139,11 @@ private struct VelocityBlock: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        let s = model.snap
+        let r = model.readout
         HStack(alignment: .top) {
-            VelocityCell(label: "v_x · forward", value: s.vx, sigma: s.sigmaVx)
+            VelocityCell(label: "v_x · forward", value: r.vx, sigma: r.sigmaVx)
             Spacer()
-            VelocityCell(label: "v_y · left", value: s.vy, sigma: s.sigmaVy)
+            VelocityCell(label: "v_y · left", value: r.vy, sigma: r.sigmaVy)
         }
     }
 }
@@ -181,6 +184,7 @@ private struct StatusRow: View {
             StatusDot(name: "GNSS", state: st.contains(.gnssOK) ? .ok : .idle)
             StatusDot(name: "LiDAR", state: st.contains(.lidarOK) ? .ok : .idle)
             StatusDot(name: "LINK", state: model.dashboardClients > 0 ? .ok : .idle)
+            StatusDot(name: "FPGA", state: model.readout.fromFPGA ? .ok : .idle)
             Spacer(minLength: 0)
         }
     }
@@ -229,7 +233,9 @@ private struct DiagnosticsLine: View {
             : "—"
         let bat = model.battery.map { "\($0)%" } ?? "—"
         let hSource = s.status.contains(.lidarOK) ? "LiDAR" : "set"
-        Text(String(format: "PSR %.1f · h %.3f m %@ · GNSS %@ · BAT %@", s.flowQuality, s.h, hSource, gnss, bat))
+        // While the FPGA's numbers are on screen, keep the phone filter's speed for comparison.
+        let phoneKF = model.readout.fromFPGA ? String(format: " · PHONE KF %.2f m/s", s.speed) : ""
+        Text(String(format: "PSR %.1f · h %.3f m %@ · GNSS %@ · BAT %@", s.flowQuality, s.h, hSource, gnss, bat) + phoneKF)
             .font(Theme.mono(10))
             .foregroundStyle(Theme.inkSoft)
             .lineLimit(1)

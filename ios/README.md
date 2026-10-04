@@ -74,6 +74,13 @@ xcodebuild -project ios/GroundSpeed/GroundSpeed.xcodeproj -scheme GroundSpeed \
 5. Without a TCP connection, set the laptop's IP in **Console › Setup › Dashboard IP** and press **Apply**. To find it, run `ipconfig getifaddr en0` on the laptop.
 6. The first time, iOS asks for **Local Network** permission. It must be allowed. You can change it later in **Settings › GroundSpeed**.
 
+**Kalman filter on the FPGA.** If the dashboard runs with `--fpga`, it recomputes the estimate on
+the simulated FPGA (`fpga/`) and sends each result back to the phone (UDP, `docs/PROTOCOL.md` §4).
+The main screen then shows the FPGA's distance, speed and velocities, "Kalman filter running on
+the FPGA" under the title, a teal **FPGA** light, and `PHONE KF x.xx m/s` (the phone's own
+filter) on the diagnostics line. When the estimates stop for 0.5 s the screen falls back to the
+phone's own filter. Runs recorded on the phone still store the phone filter's `est.csv`.
+
 Without a laptop, everything still works. Press Record and Stop, then use **Console › Runs** to export a run as a zip (AirDrop, Files). Runs are also visible in the Files app under **On My iPhone › GroundSpeed › runs**.
 
 ## On-site setup and orientation check (do this before the first real run)
@@ -108,6 +115,7 @@ Without a laptop, everything still works. Press Record and Stop, then use **Cons
 | GNSS | fix < 2 s with speed accuracy | — | no fix (normal indoors). The filter only uses GNSS speed above 1 m/s; the "pos ±N m" on the main screen is position accuracy, which a phone can't get below ~3–5 m and which the speed estimate never uses |
 | LiDAR | depth < 500 ms (during Measure height) | — | using manual/measured h |
 | LINK | dashboard connected on TCP | — | no dashboard |
+| FPGA | the numbers on screen are the dashboard's FPGA Kalman estimate (< 0.5 s old) | — | phone's own filter |
 
 ## Known limitations
 

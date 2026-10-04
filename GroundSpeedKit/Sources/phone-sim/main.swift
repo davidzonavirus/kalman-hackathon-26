@@ -116,6 +116,10 @@ while loop < args.loops {
             print(String(format: "[loop %d] t=%5.1f  v_x=%6.3f (true %5.3f) ±%5.3f  dist=%6.3f (push %6.3f)  psr=%5.1f  status=%@  sent=%llu",
                          loop, s.t, f.vx, truth.v, f.sigmaVx, f.distance, truth.x, f.flowQuality,
                          f.status.names.joined(separator: "|"), runtime.sender.framesSent))
+            if let e = runtime.fpgaEstimate(maxAge: 1.0) {
+                print(String(format: "           FPGA estimate back (%llu): v_x=%6.3f ±%5.3f  dist=%6.3f  [%@]",
+                             runtime.fpgaEstimatesReceived, e.vx, e.sigmaVx, e.distance, e.backend))
+            }
         }
     }
     runtime.engine.drain()
