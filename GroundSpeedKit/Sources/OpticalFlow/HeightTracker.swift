@@ -2,14 +2,11 @@
  ******************************************************************************
  * @file : HeightTracker.swift
  * @brief : Tracks camera height between LiDAR fixes from image expansion.
- * @author : David Nguyen
  ******************************************************************************
  * @attention
  *
  * Copyright (c) 2026 MRacing. All rights reserved.
  * MRacing is a trademark of MRacing FSAE.
- *
- * Written by David Nguyen.
  *
  * This firmware is the property of MRacing FSAE. Unauthorized use, copying,
  * or distribution is prohibited.

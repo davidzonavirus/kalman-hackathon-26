@@ -28,7 +28,7 @@ public struct IMUMountMapping: Codable, Sendable, Equatable {
         return s
     }
 
-    /// Device-frame vector → vehicle-frame vector.
+    /// Device-frame vector -> vehicle-frame vector.
     @inline(__always)
     public func apply(x dx: Double, y dy: Double, z dz: Double) -> (x: Double, y: Double, z: Double) {
         var x = dy

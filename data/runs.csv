@@ -1,0 +1,26 @@
+phone_run_id,setup,course,course_m,mount_h_m,phone_distance_m,error_pct,notes
+2026-10-03_21-34-31,cart,,,0.183,19.39,,camera service crashed after Measure h; IMU-only drift
+2026-10-03_22-18-56,cart,,,0.187,4.637,,
+2026-10-03_22-20-43,cart,,,0.186,4.583,,already moving at start; stopped partway
+2026-10-03_22-22-18,cart,16 ft,4.877,0.186,5.235,7.3,before focal-length correction
+2026-10-03_22-23-45,cart,16 ft,4.877,0.187,5.246,7.6,before focal-length correction
+2026-10-03_22-25-09,cart,16 ft,4.877,0.187,5.214,6.9,about 1 m/s; before focal-length correction
+2026-10-03_22-37-35,cart,16 ft,4.877,0.236,4.83,-1.0,first focal correction
+2026-10-03_22-38-37,cart,16 ft,4.877,0.235,4.849,-0.6,first focal correction
+2026-10-03_22-39-51,cart,16 ft,4.877,0.235,4.814,-1.3,different lighting
+2026-10-03_22-54-25,cart,,,0.25,4.84,,
+2026-10-03_22-55-58,cart,,,0.25,6.05,,6.05 m; likely the 20 ft course (-0.75 %)
+2026-10-03_22-57-27,cart,,,0.25,6.02,,
+2026-10-03_22-59-53,cart,20 ft,6.096,0.798,5.692,-6.6,79 cm mount; faster push
+2026-10-03_23-01-53,cart,20 ft,6.096,0.792,5.078,-16.7,79 cm mount
+2026-10-03_23-03-20,cart,20 ft,6.096,0.793,5.181,-15.0,79 cm mount
+2026-10-03_23-23-07,cart,20 ft,6.096,0.794,4.185,-31.3,static-pattern subtraction experiment (reverted)
+2026-10-03_23-39-53,"cart, variable height",20 ft,6.096,0.263,5.719,-6.2,height fixed at start value
+2026-10-03_23-40-27,"cart, variable height",20 ft,6.096,0.165,5.259,-13.7,height fixed at start value
+2026-10-03_23-41-51,"cart, variable height",20 ft,6.096,0.167,4.596,-24.6,height fixed at start value
+2026-10-04_00-00-16,"cart, variable height",20 ft,6.096,0.257,5.891,-3.4,image-expansion height tracking
+2026-10-04_00-01-22,"cart, variable height",20 ft,6.096,0.26,4.022,,tracked height swung 0.14-0.39 m
+2026-10-04_01-14-56,car,GPS,,0.173,,,"first drive, 12 s"
+2026-10-04_01-19-31,car,GPS,,0.173,,,car test 1: height tracker collapsed; window wrap at ~6 m/s
+2026-10-04_01-45-16,car,GPS,,0.165,,,car test 2: motion prediction; GPS within 10 % to 8 m/s for 40 s
+2026-10-04_01-59-42,car,GPS,,0.171,,,"car test 3 (final): 0.97x GPS at 10-15 mph, 1.01x at 15-20 mph, consistent to ~25 mph"

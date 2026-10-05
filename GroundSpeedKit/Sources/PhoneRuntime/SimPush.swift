@@ -3,8 +3,8 @@ import Foundation
 /// Deterministic synthetic sensor stream for a straight 10.00 m push, used by `phone-sim`
 /// (real-time playback) and by gsk-checks (fast-forward).
 ///
-/// Profile (vehicle frame, x forward): rest → accelerate at 0.5 m/s² to 1 m/s → cruise →
-/// decelerate to rest → rest. Exactly `distance` metres are travelled.
+/// Profile (vehicle frame, x forward): rest -> accelerate at 0.5 m/s² to 1 m/s -> cruise ->
+/// decelerate to rest -> rest. Exactly `distance` metres are travelled.
 /// Sensors: IMU 100 Hz (noise + bias, extra vibration while moving), flow 120 Hz (noise,
 /// good PSR, except a lens-covered dropout where PSR ≈ 2), GNSS 1 Hz, LiDAR depth 15 Hz.
 public struct SimPush: Sendable {

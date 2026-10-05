@@ -50,7 +50,7 @@ public struct FusionSnapshot: Sendable, Equatable {
 /// before the filter sees it, so the log is bit-exact with what the filter consumed.
 ///
 /// Per IMU sample (= one filter step):
-///   predict(t, ax, ay, r: gz) → distance.add(state) → est.csv row → [ZUPT update + "zupt" event]
+///   predict(t, ax, ay, r: gz) -> distance.add(state) -> est.csv row -> [ZUPT update + "zupt" event]
 /// The first IMU sample after launch / a filter change calls `reset(t:)` instead of predict
 /// (identical to a fresh filter's first predict). Starting a run does NOT touch the filter
 /// (the estimate stays continuous); it only restarts the distance integrator at the run's
@@ -77,7 +77,7 @@ public final class SensorFusionEngine: @unchecked Sendable {
         /// Duration of the calibrate command's averaging window (s).
         public var calibrationDuration: Double = 2.0
         /// Remove rotation-induced image motion from flow using the gyro:
-        ///   v_x ← v_x − s·h·ω_y,  v_y ← v_y + s·h·ω_x   (vehicle frame, ω averaged over
+        ///   v_x <- v_x − s·h·ω_y,  v_y <- v_y + s·h·ω_x   (vehicle frame, ω averaged over
         /// the flow interval). Tilting/jostling the phone sweeps the image across the floor
         /// at h·ω without any translation; without this it is counted as speed. Sign s = +1
         /// was fitted on device (flow vs gyro corr 0.89); flip it if a mount mapping change

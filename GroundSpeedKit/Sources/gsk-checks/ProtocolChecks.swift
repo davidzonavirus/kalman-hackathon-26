@@ -1,7 +1,9 @@
 import Foundation
 import SpeedProtocol
 
+// Test vectors from docs/PROTOCOL.md ("Test vectors"); the dashboard tests check the same bytes.
 let goldenHex = "a5012a00000000000000004a93400000a03f8fc2f5bccdcc4c3d8fc2753d00006040000040419a99993e0302573c3ccd"
+let goldenHexV2 = "a5022a00000000000000004a93400000a03f8fc2f5bccdcc4c3d8fc2753d00006040000040419a99993e0302573c0000003f000080be0ad7233c9a99993f0ad7a3bc000050408aaf"
 
 func goldenFrame() -> TelemetryFrame {
     TelemetryFrame(seq: 42, t: 1234.5, vx: 1.25, vy: -0.03, sigmaVx: 0.05, sigmaVy: 0.06,
@@ -23,7 +25,10 @@ func protocolChecks(_ r: inout CheckRunner) {
     let f = goldenFrame()
     let bin = f.encodeBinary()
     r.check("binary frame is 48 bytes", bin.count == 48, "\(bin.count)")
-    r.check("binary frame matches docs/golden_frame.md", hex(bin) == goldenHex, hex(bin))
+    r.check("binary v1 frame matches the PROTOCOL.md test vector", hex(bin) == goldenHex, hex(bin))
+    var g2 = f; g2.version = 2
+    g2.ax = 0.5; g2.ay = -0.25; g2.gz = 0.01; g2.flowVx = 1.2; g2.flowVy = -0.02; g2.netForward = 3.25
+    r.check("binary v2 frame matches the PROTOCOL.md test vector", hex(g2.encodeBinary()) == goldenHexV2, hex(g2.encodeBinary()))
     var f2 = f; f2.version = 2; f2.ax = 0.5; f2.ay = -0.25; f2.gz = 0.1; f2.flowVx = 1.2; f2.flowVy = -0.1; f2.netForward = 3.25
     let bin2 = f2.encodeBinary()
     r.check("v2 binary frame is 72 bytes", bin2.count == 72, "\(bin2.count)")
@@ -36,7 +41,7 @@ func protocolChecks(_ r: inout CheckRunner) {
 
     var rt: TelemetryFrame?
     r.noThrow("binary decode") { rt = try TelemetryFrame.decode(bin) }
-    r.check("binary encode→decode roundtrip", rt == f)
+    r.check("binary encode->decode roundtrip", rt == f)
 
     var bad = bin; bad[20] ^= 0x01
     var crcRejected = false
@@ -102,7 +107,7 @@ func protocolChecks(_ r: inout CheckRunner) {
             && (try? Command.parse(b[0])) == .ping && (try? Command.parse(b[1])) == .stopRun)
 
     // CSV
-    r.check("CSV headers frozen",
+    r.check("CSV headers match PROTOCOL.md",
             CSVSchema.imuHeader == "t,ax,ay,az,gx,gy,gz"
             && CSVSchema.flowHeader == "t,vx_cam,vy_cam,quality,h"
             && CSVSchema.gnssHeader == "t,speed,speed_acc,course"

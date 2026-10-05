@@ -3,7 +3,7 @@ import KalmanCore
 import PhoneRuntime
 import SpeedProtocol
 
-// Agent B: PhoneRuntime checks (called from main.swift).
+// PhoneRuntime checks: recorder, engine, UDP sender and TCP command server.
 func phoneRuntimeChecks(_ r: inout CheckRunner) {
     let tmp = FileManager.default.temporaryDirectory
         .appendingPathComponent("gsk-checks-\(ProcessInfo.processInfo.processIdentifier)-\(Int(Date().timeIntervalSince1970))")
@@ -95,11 +95,11 @@ private func axisMappingChecks(_ r: inout CheckRunner) {
     // Phone flat, screen up, top forward: pushing forward accelerates along device +y.
     let m = IMUMountMapping()
     let v = m.apply(x: 0, y: 1, z: 0.5)
-    r.check("imu mapping: default device +y → vehicle +x", v.x == 1 && v.y == 0 && v.z == 0.5)
+    r.check("imu mapping: default device +y -> vehicle +x", v.x == 1 && v.y == 0 && v.z == 0.5)
     let left = m.apply(x: -1, y: 0, z: 0)
-    r.check("imu mapping: default device −x → vehicle +y (left)", left.x == 0 && left.y == 1)
+    r.check("imu mapping: default device −x -> vehicle +y (left)", left.x == 0 && left.y == 1)
     let flipped = IMUMountMapping(flipX: true).apply(x: 0, y: 1, z: 1)
-    r.check("imu mapping: single flip is a reflection → z flips", flipped.x == -1 && flipped.z == -1)
+    r.check("imu mapping: single flip is a reflection -> z flips", flipped.x == -1 && flipped.z == -1)
 }
 
 // MARK: - Engine on the synthetic push (+ replay equivalence)
@@ -170,7 +170,7 @@ private func distanceContinuityChecks(_ r: inout CheckRunner, dir: URL) {
     rt.engine.drain()
     let during = rt.engine.snapshot().distance
     let frame = rt.makeFrame()
-    r.near("distance: two back-to-back pushes in one run → 20 m (no reset at loop boundary)", during, 20, tol: 0.3)
+    r.near("distance: two back-to-back pushes in one run -> 20 m (no reset at loop boundary)", during, 20, tol: 0.3)
     r.check("distance: telemetry frame carries the same distance", abs(Double(frame.distance) - during) < 1e-3,
             "frame \(frame.distance) vs engine \(during)")
     let reply = rt.handle(.stopRun)
@@ -188,7 +188,7 @@ private func distanceContinuityChecks(_ r: inout CheckRunner, dir: URL) {
 
 /// start_run during cruise must not disturb the estimate: only distance restarts.
 /// Camera dead (no flow at all): IMU-only velocity must not run away once the phone is
-/// still, and a Zero must not let it drift. Mirrors the 21:34 device run (v̂ → 0.9 m/s).
+/// still, and a Zero must not let it drift. Mirrors the 21:34 device run (v̂ -> 0.9 m/s).
 private func flowLossChecks(_ r: inout CheckRunner) {
     let engine = SensorFusionEngine()
     var t = Clock.now()
@@ -204,13 +204,13 @@ private func flowLossChecks(_ r: inout CheckRunner) {
             t += 0.01
         }
     }
-    // Handled for 2 s (0.5 m/s² for 1 s → ~0.5 m/s IMU velocity), then at rest with a 0.03 bias.
+    // Handled for 2 s (0.5 m/s² for 1 s -> ~0.5 m/s IMU velocity), then at rest with a 0.03 bias.
     feed(1, ax: { _ in 0.5 }, bias: 0.03)
     feed(1, ax: { s in -0.05 * sin(s * 20) }, bias: 0.03)
     feed(6, ax: { _ in 0 }, bias: 0.03)
     engine.drain()
     let rest = engine.snapshot()
-    r.near("flow lost: still phone → IMU velocity zeroed", rest.speed, 0, tol: 0.05)
+    r.near("flow lost: still phone -> IMU velocity zeroed", rest.speed, 0, tol: 0.05)
     let d0 = rest.distance
     feed(10, ax: { _ in 0 }, bias: 0.03)
     engine.drain()
@@ -283,7 +283,7 @@ private func readEvents(_ url: URL) -> [RunEvent] {
     }
 }
 
-// MARK: - UDP sender → local socket
+// MARK: - UDP sender -> local socket
 
 private func senderRoundtripChecks(_ r: inout CheckRunner) {
     guard let sock = UDPTestSocket() else { r.check("udp: bind local socket", false); return }
@@ -375,7 +375,7 @@ private func commandServerChecks(_ r: inout CheckRunner, dir: URL) {
         return client.readLine(timeout: 3).flatMap { try? CommandReply.parse(Data($0.utf8)) }
     }
     let ping = ask(#"{"cmd":"ping"}"#)
-    r.check("tcp: ping → ok reply", ping?.ok == true && ping?.cmd == "ping", "\(String(describing: ping))")
+    r.check("tcp: ping -> ok reply", ping?.ok == true && ping?.cmd == "ping", "\(String(describing: ping))")
 
     // Peer adoption: the sender should now target the client's IP.
     let d = Date().addingTimeInterval(1)
@@ -384,26 +384,26 @@ private func commandServerChecks(_ r: inout CheckRunner, dir: URL) {
 
     let start = ask(#"{"cmd":"start_run","label":"tcp_test"}"#)
     let runId = start?.run ?? ""
-    r.check("tcp: start_run → ok with run id", start?.ok == true && runId.hasSuffix("_tcp_test"), "\(String(describing: start))")
+    r.check("tcp: start_run -> ok with run id", start?.ok == true && runId.hasSuffix("_tcp_test"), "\(String(describing: start))")
     r.check("tcp: start_run created run folder",
             FileManager.default.fileExists(atPath: dir.appendingPathComponent(runId).appendingPathComponent(CSVSchema.imuFile).path))
     let mark = ask(#"{"cmd":"mark","label":"lens_covered"}"#)
-    r.check("tcp: mark → ok", mark?.ok == true)
+    r.check("tcp: mark -> ok", mark?.ok == true)
     let torch = ask(#"{"cmd":"set_torch","level":0.6}"#)
-    r.check("tcp: set_torch → ok, level applied", torch?.ok == true && abs(rt.torchLevel - 0.6) < 1e-9)
+    r.check("tcp: set_torch -> ok, level applied", torch?.ok == true && abs(rt.torchLevel - 0.6) < 1e-9)
     let bad = ask(#"{"cmd":"warp_drive"}"#)
-    r.check("tcp: unknown command → ok:false with cmd name", bad?.ok == false && bad?.cmd == "warp_drive", "\(String(describing: bad))")
+    r.check("tcp: unknown command -> ok:false with cmd name", bad?.ok == false && bad?.cmd == "warp_drive", "\(String(describing: bad))")
     let garbage = ask("not json")
-    r.check("tcp: garbage line → ok:false", garbage?.ok == false)
+    r.check("tcp: garbage line -> ok:false", garbage?.ok == false)
     let stop = ask(#"{"cmd":"stop_run"}"#)
-    r.check("tcp: stop_run → ok with same run id", stop?.ok == true && stop?.run == runId)
+    r.check("tcp: stop_run -> ok with same run id", stop?.ok == true && stop?.run == runId)
     r.check("tcp: meta.json written on stop",
             FileManager.default.fileExists(atPath: dir.appendingPathComponent(runId).appendingPathComponent(CSVSchema.metaFile).path))
     let events = (try? String(contentsOf: dir.appendingPathComponent(runId).appendingPathComponent(CSVSchema.eventsFile), encoding: .utf8)) ?? ""
     r.check("tcp: events.csv has start/mark/torch/stop",
             ["start", "mark", "torch", "stop"].allSatisfy { events.contains(",\($0),") }, events.replacingOccurrences(of: "\n", with: " | "))
     let stop2 = ask(#"{"cmd":"stop_run"}"#)
-    r.check("tcp: stop_run when idle → ok:false", stop2?.ok == false)
+    r.check("tcp: stop_run when idle -> ok:false", stop2?.ok == false)
 }
 
 /// Minimal blocking BSD TCP client.

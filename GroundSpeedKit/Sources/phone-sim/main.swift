@@ -1,4 +1,4 @@
-// phone-sim: a simulated phone built on the REAL PhoneRuntime (engine, recorder, UDP
+// phone-sim: a simulated phone built on the production PhoneRuntime (engine, recorder, UDP
 // telemetry, TCP command server). Plays a synthetic 10.00 m push in real time, looping.
 //
 //   swift run phone-sim [--host 127.0.0.1] [--port 9000] [--cmd-port 9001] [--json]
@@ -78,7 +78,7 @@ do {
     print("command server failed to start: \(error) (telemetry still running)")
 }
 _ = runtime.server.waitUntilReady(timeout: 2)
-print("phone-sim: UDP → \(args.host):\(args.port) (\(args.json ? "JSON" : "binary")), TCP commands on :\(args.cmdPort) [\(runtime.server.state)], runs → \(args.runsDir.path)")
+print("phone-sim: UDP -> \(args.host):\(args.port) (\(args.json ? "JSON" : "binary")), TCP commands on :\(args.cmdPort) [\(runtime.server.state)], runs -> \(args.runsDir.path)")
 
 signal(SIGINT) { _ in
     // Best effort: close an active run so its files are complete.

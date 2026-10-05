@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from gsdash import protocol as P  # noqa: E402
 
-GOLDEN_MD = Path(__file__).resolve().parents[2] / "docs" / "golden_frame.md"
+GOLDEN_MD = Path(__file__).resolve().parents[2] / "docs" / "PROTOCOL.md"   # "Test vectors" section
 F32 = lambda x: struct.unpack("<f", struct.pack("<f", x))[0]  # noqa: E731
 
 SAMPLE = dict(seq=42, t=1234.5, v_x=1.25, v_y=-0.03, sigma_vx=0.05, sigma_vy=0.06,
@@ -22,7 +22,7 @@ SAMPLE_V2 = dict(SAMPLE, ax=0.5, ay=-0.25, gz=0.01, flow_vx=1.2, flow_vy=-0.02,
 
 
 def load_golden_v2():
-    """A 144-hex-digit (72-byte) frame in docs/golden_frame.md, if Agent A has added one."""
+    """The 144-hex-digit (72-byte) v2 test vector in docs/PROTOCOL.md."""
     if not GOLDEN_MD.exists():
         return None
     hexes = re.findall(r"\b([0-9a-fA-F]{144})\b", GOLDEN_MD.read_text())
@@ -62,7 +62,7 @@ class TestFrames(unittest.TestCase):
     def test_golden(self):
         raw, js = load_golden()
         if raw is None:
-            self.skipTest("docs/golden_frame.md not present")
+            self.fail("docs/PROTOCOL.md not found")
         # our encoder must reproduce the Swift golden bytes exactly
         self.assertEqual(P.encode_frame(**SAMPLE).hex(), raw.hex())
         f = P.decode_frame(raw)
@@ -197,7 +197,7 @@ class TestFramesV2(unittest.TestCase):
     def test_golden_v2(self):
         raw = load_golden_v2()
         if raw is None:
-            self.skipTest("no v2 golden frame in docs/golden_frame.md yet")
+            self.fail("no v2 test vector in docs/PROTOCOL.md")
         f = P.decode_frame(raw)
         self.assertEqual(f["version"], 2)
         re_enc = P.encode_frame(**{k: f[k] for k in P.FIELDS_V2}, version=2)

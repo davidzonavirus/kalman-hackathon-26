@@ -1,6 +1,6 @@
 import Foundation
 
-/// Dashboard → phone command (PROTOCOL.md §2). One JSON object per line, `"cmd"` key.
+/// Dashboard -> phone command (PROTOCOL.md §2). One JSON object per line, `"cmd"` key.
 public enum Command: Sendable, Equatable, Codable {
     case ping
     case startRun(label: String?)

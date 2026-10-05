@@ -41,7 +41,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.mhacks26.groundspeed
         PRODUCT_NAME: GroundSpeed
         # Set your Apple ID team here (or in Xcode: target > Signing & Capabilities > Team).
-        DEVELOPMENT_TEAM: D9324GTY2Z  # David Nguyen (Personal Team)
+        DEVELOPMENT_TEAM: D9324GTY2Z  # Apple developer team used for signing; change to yours
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"

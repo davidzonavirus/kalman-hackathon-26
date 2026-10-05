@@ -2,14 +2,11 @@
  ******************************************************************************
  * @file : main.swift
  * @brief : Speed-range benchmark for PhaseCorrelator (shift sweep with motion blur)
- * @author : David Nguyen
  ******************************************************************************
  * @attention
  *
  * Copyright (c) 2026 MRacing. All rights reserved.
  * MRacing is a trademark of MRacing FSAE.
- *
- * Written by David Nguyen.
  *
  * This firmware is the property of MRacing FSAE. Unauthorized use, copying,
  * or distribution is prohibited.
@@ -162,7 +159,7 @@ for sFull in stride(from: step, through: maxShift, by: step) {   // full-res px 
         guard let r = b.withUnsafeBytes({
             corr.ingest(lumaBase: $0.baseAddress!, width: frameW, height: crop, bytesPerRow: frameW, predictX: p)
         }) else { continue }
-        // Camera moves +x over the floor → image content moves −x.
+        // Camera moves +x over the floor -> image content moves −x.
         let err = hypot(abs(r.dx) - truth, r.dy)
         psrs.append(r.psr); errs.append(err)
         if err < 0.5 && r.psr >= psrMin { ok += 1; biasSum += abs(r.dx) / truth - 1; biasN += 1 }

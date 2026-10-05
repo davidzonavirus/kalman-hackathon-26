@@ -34,10 +34,10 @@ public struct SeededRandom: Sendable {
     public mutating func gaussian(_ sigma: Double) -> Double { sigma * gaussian() }
 }
 
-/// Synthetic rest-to-rest straight push, for checks and for other agents to develop against.
+/// Synthetic rest-to-rest straight push, used by the checks and `kfreplay --synth`.
 ///
-/// Profile (t relative to `t0`): rest `restBefore` s → raised-cosine accel ramp (`ramp` s) →
-/// cruise at `cruiseSpeed` → raised-cosine decel ramp → rest `restAfter` s. Cruise length is
+/// Profile (t relative to `t0`): rest `restBefore` s -> raised-cosine accel ramp (`ramp` s) ->
+/// cruise at `cruiseSpeed` -> raised-cosine decel ramp -> rest `restAfter` s. Cruise length is
 /// chosen so the total distance is exactly `distance` (each ramp covers cruiseSpeed·ramp/2).
 ///
 /// Sensors (vehicle frame, as the phone logs them):
@@ -152,7 +152,7 @@ public struct SyntheticRun: Sendable {
             let tr = truthAt(t)
             let h = config.height + rng.gaussian(0.002)
             if let drop, drop.contains(t) {
-                // Lens covered: dark, featureless frame → noise-level PSR, bogus ~0 shift.
+                // Lens covered: dark, featureless frame -> noise-level PSR, bogus ~0 shift.
                 flow.append(FlowSample(t: t, vx: rng.gaussian(0.05), vy: rng.gaussian(0.05),
                                        quality: rng.uniform(1.5, 6.0), h: h))
             } else if let o = outlierTimes.firstIndex(where: { abs($0 - t) < 0.5 / config.flowRate }) {

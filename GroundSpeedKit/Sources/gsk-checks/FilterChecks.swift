@@ -53,8 +53,8 @@ func filterChecks(_ r: inout CheckRunner) {
         let before = sigma(at: drop.lowerBound - 0.05)
         let atEnd = sigma(at: drop.upperBound - 0.01)
         let after = sigma(at: drop.upperBound + 0.5)
-        r.check("σ_vx grows during dropout", atEnd > 3 * before, String(format: "%.4f → %.4f", before, atEnd))
-        r.check("σ_vx shrinks after flow returns", after < 0.3 * atEnd, String(format: "%.4f → %.4f", atEnd, after))
+        r.check("σ_vx grows during dropout", atEnd > 3 * before, String(format: "%.4f -> %.4f", before, atEnd))
+        r.check("σ_vx shrinks after flow returns", after < 0.3 * atEnd, String(format: "%.4f -> %.4f", atEnd, after))
         let maxErr = zip(rows4, run.truth).filter { drop.contains($0.0.t) }.map { abs($0.0.vx - $0.1.v) }.max() ?? 0
         r.check("velocity error during dropout < 0.15 m/s", maxErr < 0.15, String(format: "%.3f", maxErr))
     }
@@ -138,7 +138,7 @@ func filterChecks(_ r: inout CheckRunner) {
     for _ in 0..<100 { ty += 0.001; yf.predict(t: ty, ax: 0, ay: 0, r: 0.5) }
     r.check("yaw term rotates velocity (vy < 0 for r > 0, |v| ≈ const)",
             yf.state.vy < 0 && abs(yf.state.speed - v0) < 1e-3 * v0,
-            String(format: "vy=%.5f |v|=%.5f→%.5f", yf.state.vy, v0, yf.state.speed))
+            String(format: "vy=%.5f |v|=%.5f->%.5f", yf.state.vy, v0, yf.state.speed))
 
     // DistanceIntegrator
     var dp = DistanceIntegrator(mode: .pathLength)
@@ -180,12 +180,12 @@ func filterChecks(_ r: inout CheckRunner) {
     var zr = SeededRandom(seed: 3)
     var still = false
     for k in 0..<100 { still = zd.update(t: Double(k) * 0.01, ax: zr.gaussian(0.02), ay: zr.gaussian(0.02), az: zr.gaussian(0.02), flowSpeed: 0.005) }
-    r.check("ZuptDetector: still → true", still)
+    r.check("ZuptDetector: still -> true", still)
     var moving = false
     for k in 100..<200 { moving = zd.update(t: Double(k) * 0.01, ax: zr.gaussian(0.15), ay: zr.gaussian(0.15), az: zr.gaussian(0.25), flowSpeed: 1.0) || moving }
-    r.check("ZuptDetector: vibrating & moving → false", !moving)
+    r.check("ZuptDetector: vibrating & moving -> false", !moving)
     var slowRoll = false
     zd.reset()
     for k in 0..<100 { slowRoll = zd.update(t: Double(k) * 0.01, ax: zr.gaussian(0.02), ay: zr.gaussian(0.02), az: zr.gaussian(0.02), flowSpeed: 0.3) || slowRoll }
-    r.check("ZuptDetector: quiet IMU but flow 0.3 m/s → false", !slowRoll)
+    r.check("ZuptDetector: quiet IMU but flow 0.3 m/s -> false", !slowRoll)
 }

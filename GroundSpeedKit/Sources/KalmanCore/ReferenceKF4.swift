@@ -1,11 +1,11 @@
 import Foundation
 
-/// Reference 4-state filter, x = [v_x, v_y, b_x, b_y] (see docs/KALMAN_INTEGRATION.md).
+/// Reference 4-state filter, x = [v_x, v_y, b_x, b_y] (see "Kalman filter" in README.md).
 ///
-/// Exact algorithm (so `kf_ref.py` can match to 1e-6):
+/// Exact algorithm (a port in another language following these steps matches to 1e-6):
 /// 1. First `predict` (or `reset(t:)`) initializes: x = 0, P = diag(p0_v, p0_v, p0_b, p0_b),
 ///    state.t = t, no propagation. Updates before that return `.skipped("not initialized")`.
-/// 2. `predict`: Δt = t − state.t. Δt ≤ 0 → ignored (state unchanged). Δt > 0.1 → clamped to 0.1
+/// 2. `predict`: Δt = t − state.t. Δt ≤ 0 -> ignored (state unchanged). Δt > 0.1 -> clamped to 0.1
 ///    (state.t still advances to t).
 ///      v_x += Δt·(a_x − b_x + r·v_y);  v_y += Δt·(a_y − b_y − r·v_x)   (both use the OLD v)
 ///      P = F P Fᵀ + diag(q_accel·Δt, q_accel·Δt, q_bias·Δt, q_bias·Δt), then P = (P+Pᵀ)/2.
@@ -14,7 +14,7 @@ import Foundation
 ///      P = (I − K H) P (I − K H)ᵀ + R K Kᵀ   (Joseph), then symmetrize.
 /// 4. Flow: skipped if quality < psr_min or not finite. R = r_flow_base·(psr_ref/max(q, psr_min))².
 ///    Gate test uses the PRIOR x and P for both axes: nis_i = (z_i − v_i)²/(P_ii + R).
-///    If either nis_i > gate → whole sample rejected (`.gated(max nis)`), else x-axis then
+///    If either nis_i > gate -> whole sample rejected (`.gated(max nis)`), else x-axis then
 ///    y-axis sequential updates (`.accepted(max nis)`).
 ///    Lockout recovery: a gated flow sample increments a counter (any accepted flow resets it
 ///    to 0). When the counter reaches gate_reset_count (> 0), P_vv rows/cols are reset:
@@ -190,7 +190,7 @@ public final class ReferenceKF4: GroundSpeedFilter {
 
 @inline(__always) func sq(_ v: Double) -> Double { v * v }
 
-/// Tiny fixed-size 4×4 matrix stored inline (16 doubles in a tuple → no heap allocation).
+/// Tiny fixed-size 4×4 matrix stored inline (16 doubles in a tuple -> no heap allocation).
 struct Mat4: Sendable, Equatable {
     private var m: (Double, Double, Double, Double, Double, Double, Double, Double,
                     Double, Double, Double, Double, Double, Double, Double, Double)

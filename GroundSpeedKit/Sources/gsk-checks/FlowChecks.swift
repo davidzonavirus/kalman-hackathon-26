@@ -84,7 +84,7 @@ func flowChecks(_ r: inout CheckRunner) {
     let flat = [Float](repeating: 0.5, count: N * N)
     _ = pc.ingest(patch: flat)
     let sFlat = pc.ingest(patch: flat)
-    r.check("flat (lens covered) frame → PSR 0, finite", sFlat.map { $0.psr == 0 && $0.dx.isFinite } ?? false)
+    r.check("flat (lens covered) frame -> PSR 0, finite", sFlat.map { $0.psr == 0 && $0.dx.isFinite } ?? false)
 
     // 8-bit luma path: centre crop 256 of a 300×280 image (bytesPerRow 320), 2× box downsample.
     let W = 300, H = 280, BPR = 320
@@ -102,10 +102,10 @@ func flowChecks(_ r: inout CheckRunner) {
     let l1 = luma((0, 0)), l2 = luma((2.6, 1.3))
     _ = l1.withUnsafeBytes { pl.ingest(lumaBase: $0.baseAddress!, width: W, height: H, bytesPerRow: BPR) }
     let sl = l2.withUnsafeBytes { pl.ingest(lumaBase: $0.baseAddress!, width: W, height: H, bytesPerRow: BPR) }
-    r.check("luma path: full-res (2.6, 1.3) → grid (1.3, 0.65) within 0.15",
+    r.check("luma path: full-res (2.6, 1.3) -> grid (1.3, 0.65) within 0.15",
             sl.map { abs($0.dx - 1.3) < 0.15 && abs($0.dy - 0.65) < 0.15 } ?? false,
             sl.map { String(format: "dx=%.3f dy=%.3f psr=%.1f", $0.dx, $0.dy, $0.psr) } ?? "nil")
-    r.check("luma path: image smaller than crop → nil",
+    r.check("luma path: image smaller than crop -> nil",
             l1.withUnsafeBytes { pl.ingest(lumaBase: $0.baseAddress!, width: 200, height: 200, bytesPerRow: BPR) } == nil)
 
     // Motion prediction: (−180, 30) full-res px is beyond the ±128 px window; with a fixed
@@ -125,7 +125,7 @@ func flowChecks(_ r: inout CheckRunner) {
     let sp = p2.withUnsafeBytes {
         pp.ingest(lumaBase: $0.baseAddress!, width: PW, height: PH, bytesPerRow: PW, predictX: -170, predictY: 24)
     }
-    r.check("prediction: (−180, 30) px with a ±10 px wrong guess → (−90, 15) within 0.2",
+    r.check("prediction: (−180, 30) px with a ±10 px wrong guess -> (−90, 15) within 0.2",
             sp.map { abs($0.dx + 90) < 0.2 && abs($0.dy - 15) < 0.2 } ?? false,
             sp.map { String(format: "dx=%.3f dy=%.3f psr=%.1f", $0.dx, $0.dy, $0.psr) } ?? "nil")
 
@@ -144,7 +144,7 @@ func flowChecks(_ r: inout CheckRunner) {
     r.near("FlowConverter vy sign", v.vy, 1 * 2 * 120 * 0.3 / 1000, tol: 1e-12)
     let g = SIMD3<Double>(0, 9.81 * sin(Double.pi / 6), 9.81 * cos(Double.pi / 6))
     let vt = fc.velocity(dx: 2, dy: 0, dt: 1.0 / 120, h: 0.3, gravityCam: g)
-    r.near("FlowConverter tilt 30° → ×1/cos30", vt.vx, v.vx / cos(Double.pi / 6), tol: 1e-12)
+    r.near("FlowConverter tilt 30° -> ×1/cos30", vt.vx, v.vx / cos(Double.pi / 6), tol: 1e-12)
     r.near("FlowConverter tilt clamp", fc.cosTilt(gravityCam: SIMD3(9.81, 0, 0)), 0.5, tol: 0)
 
     // MountMapping
@@ -157,7 +157,7 @@ func flowChecks(_ r: inout CheckRunner) {
         let out = mm.apply(PlanarVelocity(vx: vx, vy: vy))
         if !(mm.isProper && out.vx > 0.9) { allProper = false }
     }
-    r.check("MountMapping.fromForwardPush → forward +x, proper", allProper)
+    r.check("MountMapping.fromForwardPush -> forward +x, proper", allProper)
     r.check("MountMapping.standard is proper, identity is not", MountMapping.standard.isProper && !MountMapping.identity.isProper)
     let mj = (try? JSONEncoder().encode(MountMapping.standard)) ?? Data()
     r.check("MountMapping JSON keys", jsonKeys(mj) == ["swap_xy", "flip_x", "flip_y"])

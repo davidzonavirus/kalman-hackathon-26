@@ -33,7 +33,7 @@ public enum UpdateOutcome: Sendable, Equatable {
 public protocol GroundSpeedFilter: AnyObject {
     static var name: String { get }      // goes into meta.json "filter_name"
     var state: FilterState { get }
-    var config: FilterConfig { get set } // Q, R, gate, etc. (Codable → meta.json)
+    var config: FilterConfig { get set } // Q, R, gate, etc. (Codable -> meta.json)
 
     func reset(t: Double)
 

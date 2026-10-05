@@ -23,7 +23,7 @@ public struct FlowShift: Sendable, Equatable {
 /// Frame-to-frame translation estimator by phase correlation (vDSP 2-D FFT).
 ///
 /// Pipeline per frame (all buffers preallocated; no allocation in `ingest`):
-/// 1. Luma: centre crop of `N·downsample` square, box-downsampled by `downsample` → N×N.
+/// 1. Luma: centre crop of `N·downsample` square, box-downsampled by `downsample` -> N×N.
 /// 2. Subtract mean, multiply by a 2-D Hann window (suppresses edge wrap-around).
 /// 3. F_cur = FFT2(patch). Cross-power R = F_cur · conj(F_prev) / |F_cur · conj(F_prev)|.
 ///    If cur(x) = prev(x − d) then R = e^{−i2πk·d/N} and IFFT2(R) = δ(x − d): the peak sits at +d.
@@ -53,7 +53,7 @@ public final class PhaseCorrelator {
     private let tmp: UnsafeMutablePointer<Float>
     private var hasPrev = false
 
-    /// Half-size of the sidelobe exclusion box (11×11 → 5).
+    /// Half-size of the sidelobe exclusion box (11×11 -> 5).
     private let excl = 5
 
     /// - Parameters:
@@ -84,7 +84,7 @@ public final class PhaseCorrelator {
         // Separable 2-D Hann window.
         var w1 = [Float](repeating: 0, count: n)
         for i in 0..<n { w1[i] = Float(0.5 - 0.5 * cos(2 * Double.pi * Double(i) / Double(n - 1))) }
-        // Gaussian low-pass on the (wrapped) frequency grid. Spatial σ_s ↔ σ_k = N/(2π σ_s).
+        // Gaussian low-pass on the (wrapped) frequency grid. Spatial σ_s <-> σ_k = N/(2π σ_s).
         let sk = Double(n) / (2 * Double.pi * peakSigma)
         var g1 = [Float](repeating: 0, count: n)
         for i in 0..<n {
@@ -180,7 +180,7 @@ public final class PhaseCorrelator {
         return correlate(mask: nil)
     }
 
-    /// patch → zero-mean, Hann-windowed spectrum in curRe/curIm.
+    /// patch -> zero-mean, Hann-windowed spectrum in curRe/curIm.
     private func forward() {
         let len = vDSP_Length(count)
         var mean: Float = 0
@@ -208,7 +208,7 @@ public final class PhaseCorrelator {
         var prev = DSPSplitComplex(realp: prevRe, imagp: prevIm)
         var cross = DSPSplitComplex(realp: xRe, imagp: xIm)
         vDSP_zvmul(&prev, 1, &cur, 1, &cross, 1, len, -1)   // conjugate = -1 conjugates first arg
-        // |X| → tmp, normalise, apply low-pass (G / |X|), guarding tiny magnitudes.
+        // |X| -> tmp, normalise, apply low-pass (G / |X|), guarding tiny magnitudes.
         vDSP_zvabs(&cross, 1, tmp, 1, len)
         var maxMag: Float = 0
         vDSP_maxv(tmp, 1, &maxMag, len)

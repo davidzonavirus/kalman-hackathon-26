@@ -2,14 +2,11 @@
 ******************************************************************************
  * @file : test_phone_link.py
  * @brief : Phone discovery and command-link target selection.
- * @author : David Nguyen
 ******************************************************************************
  * @attention
  *
  * Copyright (c) 2026 MRacing. All rights reserved.
  * MRacing is a trademark of MRacing FSAE.
- *
- * Written by David Nguyen.
  *
  * This firmware is the property of MRacing FSAE. Unauthorized use, copying,
  * or distribution is prohibited.

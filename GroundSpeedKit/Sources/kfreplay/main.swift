@@ -5,7 +5,7 @@
 //   kfreplay --synth <out_dir> [--seed N] [--no-dropout]
 //
 // Replay: reads imu.csv / flow.csv / gnss.csv / events.csv, merges by timestamp (equal t:
-// IMU predict, flow, GNSS, ZUPT) and writes est.csv with the frozen header (default
+// IMU predict, flow, GNSS, ZUPT) and writes est.csv with the standard header (default
 // <run_dir>/est_replay_<filter>.csv so the phone's est.csv is never overwritten).
 //
 // ZUPT sources: events.csv rows with event "zupt" (the app logs every ZUPT it applies) plus,
@@ -38,7 +38,7 @@ filters: \(FilterRegistry.names.joined(separator: ", "))
 
 // MARK: - CSV IO
 
-/// Parses a CSV with a header into column-name → index plus rows of cells.
+/// Parses a CSV with a header into column-name -> index plus rows of cells.
 func readCSV(_ url: URL) -> (cols: [String: Int], rows: [[String]])? {
     guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
     var lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r\n" })
@@ -175,7 +175,7 @@ func writeSynthetic(to dir: URL, seed: UInt64, dropout: Bool) {
     let sum = Replay.run(filter: f, imu: data.imu, flow: data.flow, gnss: data.gnss, events: data.events,
                          zuptDetector: ZuptDetector(), onRow: { est += estLine($0) + "\n" })
     write(est, to: dir.appendingPathComponent(CSVSchema.estFile))
-    print("synthetic run → \(dir.path)")
+    print("synthetic run -> \(dir.path)")
     print(String(format: "  %.2f s, imu %d, flow %d, truth distance %.4f m, %@ est distance %.4f m",
                  run.totalDuration, run.imu.count, run.flow.count, run.truth.last?.d ?? 0,
                  FilterRegistry.defaultName, sum.finalDistance))
@@ -287,5 +287,5 @@ for name in names {
     print("  " + pad(name, 16, left: true) + pad(String(format: "%.4f", s.finalDistance), 12)
           + pad(String(format: "%.4f", s.maxSigmaV), 9)
           + pad("\(s.flowAccepted)/\(s.flowGated)/\(s.flowSkipped)", 21) + pad("\(s.zuptCount)", 7) + "  " + cmp)
-    print("    → \(outURL.path)")
+    print("    -> \(outURL.path)")
 }

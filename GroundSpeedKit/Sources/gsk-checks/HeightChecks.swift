@@ -2,14 +2,11 @@
  ******************************************************************************
  * @file : HeightChecks.swift
  * @brief : Image-expansion height tracking on rendered frames of a tilted floor.
- * @author : David Nguyen
  ******************************************************************************
  * @attention
  *
  * Copyright (c) 2026 MRacing. All rights reserved.
  * MRacing is a trademark of MRacing FSAE.
- *
- * Written by David Nguyen.
  *
  * This firmware is the property of MRacing FSAE. Unauthorized use, copying,
  * or distribution is prohibited.
@@ -120,16 +117,16 @@ func heightChecks(_ r: inout CheckRunner) {
                 String(format: "tracked %+.2f %%, isotropic-only %+.2f %%",
                        (res.tracked / 0.20 - 1) * 100, (res.naive / 0.20 - 1) * 100))
     }
-    // Ride height rising 0.20 → 0.24 m while moving on a tilted mount.
+    // Ride height rising 0.20 -> 0.24 m while moving on a tilted mount.
     let rise = ExpansionRig().run(frames: 30, h0: 0.20, pose: { f in
         (Double(f) * step * 0.9, Double(f) * step * 0.3, 0.20 + 0.04 * Double(f) / 30)
     }, pitch: 4 * deg, roll: 2 * deg)
-    r.check("h 0.20 → 0.24 m while moving: tracked within 1 %", abs(rise.tracked / 0.24 - 1) < 0.01,
+    r.check("h 0.20 -> 0.24 m while moving: tracked within 1 %", abs(rise.tracked / 0.24 - 1) < 0.01,
             String(format: "tracked %.4f m", rise.tracked))
     // Lowering at rest.
     let drop = ExpansionRig().run(frames: 20, h0: 0.25, pose: { f in (0, 0, 0.25 - 0.06 * Double(f) / 20) },
                                   pitch: 3 * deg, roll: 0)
-    r.check("h 0.25 → 0.19 m at rest: tracked within 1 %", abs(drop.tracked / 0.19 - 1) < 0.01,
+    r.check("h 0.25 -> 0.19 m at rest: tracked within 1 %", abs(drop.tracked / 0.19 - 1) < 0.01,
             String(format: "tracked %.4f m", drop.tracked))
 
     var t = HeightTracker(height: 0.2)

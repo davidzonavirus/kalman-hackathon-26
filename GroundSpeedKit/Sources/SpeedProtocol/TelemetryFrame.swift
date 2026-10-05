@@ -9,12 +9,12 @@ public enum TelemetryDecodeError: Error, Sendable, Equatable {
     case badJSON(String)
 }
 
-/// One telemetry sample, phone → dashboard (PROTOCOL.md §1).
+/// One telemetry sample, phone -> dashboard (PROTOCOL.md §1).
 ///
 /// Binary layout: v1 = 48 bytes, v2 = 72 bytes (adds accel, yaw rate, raw flow, net forward)
 /// little-endian, see `encodeBinary()`. `version` selects what is encoded; decode accepts both. Floating fields are
 /// stored as `Double`/`Float` in Swift exactly matching their wire width so an
-/// encode→decode roundtrip is bit-exact.
+/// encode->decode roundtrip is bit-exact.
 public struct TelemetryFrame: Sendable, Equatable, Codable {
     public static let magic: UInt8 = 0xA5
     /// Default (latest) wire version.

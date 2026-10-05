@@ -284,7 +284,7 @@ private struct SetupPane: View {
                 LiveValue(label: "imu a_x", value: model.snap.imuAx, threshold: 0.1)
             }
             .padding(.vertical, 10)
-            Micro("Flow · camera → vehicle")
+            Micro("Flow · camera -> vehicle")
             SwitchRow(label: "Swap x / y", isOn: $draft.flowMapping.swapXY)
             SwitchRow(label: "Flip x", isOn: $draft.flowMapping.flipX)
             SwitchRow(label: "Flip y", isOn: $draft.flowMapping.flipY)
@@ -295,7 +295,7 @@ private struct SetupPane: View {
                 QuietButton(title: "Learn") { model.learnMountFromPush() }
             }
             if let m = model.learnMessage { Note(m) }
-            Micro("IMU · device → vehicle").padding(.top, 10)
+            Micro("IMU · device -> vehicle").padding(.top, 10)
             Note("Default: flat, screen up, top of phone forward.")
             SwitchRow(label: "Swap x / y", isOn: $draft.imuMapping.swapXY)
             SwitchRow(label: "Flip x", isOn: $draft.imuMapping.flipX)

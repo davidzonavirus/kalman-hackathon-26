@@ -5,11 +5,11 @@ import Foundation
 import OpticalFlow
 import PhoneRuntime
 
-/// Back wide camera looking at the floor → phase-correlation optical flow → vehicle-frame
+/// Back wide camera looking at the floor -> phase-correlation optical flow -> vehicle-frame
 /// ground velocity.
 ///
-/// Format: ~1280×720 at 120 fps if available (else the highest fps ≤ 240 near 720p, else
-/// 60/30), 420f. Video stabilisation off. Torch via `setTorchModeOn(level:)`. After a short
+/// Format: ~1280×720 at the highest rate up to `targetFps` (240; `hotFps` 120 under thermal
+/// pressure), 420f. The session starts at 30 fps and steps up once running. Video stabilisation off. Torch via `setTorchModeOn(level:)`. After a short
 /// settle with continuous AF/AE (torch on), focus is locked at the current lens position and
 /// exposure is switched to custom ≤ 1/1000 s with ISO raised to keep brightness.
 final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
@@ -82,7 +82,7 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     static let reacquire: [Double] = [0.5, 1.5, 0.75, 1.25, 0, 1]
     /// Allowed change from `lastGood` (full-res px): base + per lost frame. A weak peak at a
     /// very different motion is the sensor's fixed pattern or a wrap, not the car (seen:
-    /// 4.7 m/s → 0 in one frame at PSR 13, after which tracking never recovered).
+    /// 4.7 m/s -> 0 in one frame at PSR 13, after which tracking never recovered).
     static let jumpBase = 8.0, jumpPerFrame = 2.0
     /// Exactly-zero motion (< `zeroShift` full-res px) while `lastGood` is above `movingShift`
     /// needs `relockPSR`: the fixed pattern peaks at zero with PSR 10–25, and a car cannot
@@ -273,7 +273,7 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             do { try applyFrameRate(dev, fps: newFps) } catch { updateStatus { $0.error = "fps: \(error)" } }
         }
         updateStatus { $0.fps = newFps }
-        onEvent?("camera_pressure", "\(level.rawValue) → \(Int(newFps)) fps")
+        onEvent?("camera_pressure", "\(level.rawValue) -> \(Int(newFps)) fps")
     }
 
     private func installObservers() {
@@ -405,7 +405,7 @@ final class CameraFlowSource: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     /// barrel distortion squeezes the edges, so the FOV underestimates the magnification at
     /// the centre crop the correlator uses. Fitted jointly with `DepthSource.heightOffset` on
     /// iPhone 18 Pro Max, 1280×720 @ 240 fps: six 16 ft (4.877 m) pushes at LiDAR h = 0.186 m
-    /// and 0.235 m → 1.027, all runs within ±0.4 %. Only applies when the per-frame intrinsic
+    /// and 0.235 m -> 1.027, all runs within ±0.4 %. Only applies when the per-frame intrinsic
     /// matrix is unavailable (it is at 240 fps).
     static let fovFocalCorrection = 1.027
 

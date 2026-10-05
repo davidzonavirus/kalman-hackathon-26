@@ -3,7 +3,7 @@
 /// Fires when, over the last `window` seconds of IMU samples, the variance of the
 /// (gravity-removed) accel magnitude is below `accelVarThreshold` AND the latest flow
 /// speed is below `flowSpeedThreshold`. If no fresh flow is available, `requireFlow`
-/// decides (default false → accel alone may declare rest).
+/// decides (default false -> accel alone may declare rest).
 ///
 /// Uses a fixed-capacity ring buffer with running sums, no allocation per sample.
 public struct ZuptDetector: Sendable {

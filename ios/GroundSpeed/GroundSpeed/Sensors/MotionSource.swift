@@ -2,9 +2,9 @@ import CoreMotion
 import Foundation
 import PhoneRuntime
 
-/// CoreMotion device motion at 100 Hz → vehicle-frame IMU samples.
+/// CoreMotion device motion at 100 Hz -> vehicle-frame IMU samples.
 ///
-/// userAcceleration (g, gravity removed) × 9.80665 → m/s²; rotationRate (rad/s).
+/// userAcceleration (g, gravity removed) × 9.80665 -> m/s²; rotationRate (rad/s).
 /// Both are device-frame and rotated to the vehicle frame with `IMUMountMapping`
 /// (default: phone flat, screen up, top of phone pointing forward).
 final class MotionSource: @unchecked Sendable {

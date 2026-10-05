@@ -21,9 +21,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import protocol as P
+from .replay import Replayer
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+ARCHIVE_LOG_DIR = Path(__file__).resolve().parents[2] / "data" / "dashboard_logs"
 
 
 def log(*a):
@@ -53,19 +55,37 @@ class Telemetry:
         self.recv_times = collections.deque(maxlen=200)
         self.last_frame = None
         self.started = time.time()
+        self.replay_active = False     # while True, live frames update stats/log but not the display
 
     def add_frame(self, frame: dict, addr):
         now = time.time()
         frame["recv_time"] = now
         with self.cond:
             frame["seq_event"] = self.seq.update(frame["seq"], frame["t"])
-            self.frames.append((self.next_idx, frame))
-            self.next_idx += 1
+            if not self.replay_active:
+                self.frames.append((self.next_idx, frame))
+                self.next_idx += 1
             self.last_recv = now
             self.recv_times.append(now)
             self.source_ip, self.source_port = addr[0], addr[1]
             self.last_frame = frame
             self.cond.notify_all()
+
+    def add_replay_frame(self, frame: dict):
+        """A frame from a recorded run (gsdash.replay): shown like a live frame, no link stats."""
+        frame["recv_time"] = time.time()
+        frame["seq_event"] = None
+        with self.cond:
+            self.frames.append((self.next_idx, frame))
+            self.next_idx += 1
+            self.cond.notify_all()
+
+    def purge_replay(self):
+        """Drop replayed frames from the history so a reloaded page shows live data only."""
+        with self.lock:
+            keep = [(i, f) for i, f in self.frames if not f.get("replay")]
+            self.frames.clear()
+            self.frames.extend(keep)
 
     def add_error(self, err: P.FrameError):
         with self.lock:
@@ -471,6 +491,7 @@ class Dashboard:
         self.udp_port = self.udp.port
         self.cmd_log = collections.deque(maxlen=100)
         self.cmd_lock = threading.Lock()
+        self.replay = Replayer(self.telem, args.log_dir, ARCHIVE_LOG_DIR)
 
     def start(self):
         self.udp.start()
@@ -479,6 +500,7 @@ class Dashboard:
             f"UI at http://{'localhost' if self.args.bind in ('127.0.0.1', '0.0.0.0') else self.args.bind}:{self.http_port}/")
 
     def stop(self):
+        self.replay.stop()
         self.httpd.shutdown()
         self.httpd.server_close()
         self.udp.stop()
@@ -500,6 +522,7 @@ class Dashboard:
             "log_dir": str(self.logger.dir) if self.logger.dir else None,
             "udp_port": self.udp_port,
             "last_frame": self.telem.last_frame,
+            "replay": self.replay.status(),
             "server_time": time.time(),
         }
 
@@ -535,6 +558,8 @@ def _make_handler(dash: Dashboard):
                 return self._sse()
             if path == "/api/status":
                 return self._send_json(dash.status())
+            if path == "/api/replay/runs":
+                return self._send_json(dash.replay.catalog())
             if path == "/api/cmdlog":
                 with dash.cmd_lock:
                     return self._send_json(list(dash.cmd_log))
@@ -568,6 +593,12 @@ def _make_handler(dash: Dashboard):
             if path == "/api/phone":
                 dash.phone.set_explicit(body.get("ip"))
                 return self._send_json({"ok": True, "phone": dash.phone.status()})
+            if path == "/api/replay/start":
+                return self._send_json(dash.replay.start(run_id=body.get("id"), n=body.get("n"),
+                                                         loop=body.get("loop", True),
+                                                         speed=body.get("speed", 1.0)))
+            if path == "/api/replay/stop":
+                return self._send_json(dash.replay.stop())
             if path == "/api/reset_stats":
                 dash.telem.reset_stats()
                 return self._send_json({"ok": True})
@@ -641,6 +672,8 @@ def build_arg_parser():
     ap.add_argument("--log-dir", default=str(DEFAULT_LOG_DIR), help="session log root")
     ap.add_argument("--no-log", action="store_true", help="do not write CSV logs")
     ap.add_argument("--no-bonjour", action="store_true", help="disable dns-sd discovery")
+    ap.add_argument("--replay", type=int, default=None, metavar="N",
+                    help="start by looping recorded run #N from the logs (see /api/replay/runs)")
     return ap
 
 
@@ -652,6 +685,9 @@ def main(argv=None):
         log(f"cannot bind: {e} (is another gsdash already running?)")
         sys.exit(1)
     dash.start()
+    if args.replay:
+        r = dash.replay.start(n=args.replay, loop=True)
+        log(f"replay: {r}" if not r.get("ok") else f"replaying run #{args.replay} on a loop")
     try:
         while True:
             time.sleep(3600)

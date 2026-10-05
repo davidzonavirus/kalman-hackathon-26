@@ -38,6 +38,15 @@ let acc = null;             // cumulative, reset-robust distance / net accumulat
 let zeroD = 0, zeroN = 0, zeroWall = null, zeroPendingUntil = 0;
 let prevRec = false;
 let dirty = true;
+// replay of a logged run (server-side loop): {active, n, loop, progress, ...} from /api/status
+let replay = { active: false }, replayLoop = null, replayRecSeen = false;
+function resetDisplay() {
+  pts.length = 0; acc = null; last = null; prevRec = false; zeroPendingUntil = 0;
+  zeroWall = null; heldRun = null; replayRecSeen = false; dirty = true;
+  for (const id of ["dist", "net", "speed", "vx", "vy"]) setText(id, "0.00");
+  for (const id of ["kmh", "mph"]) setText(id, "0.0");
+  for (const id of ["svx", "svy"]) setText(id, "–");
+}
 
 function accumulate(f) {
   const dist = f.distance == null ? (acc ? acc.prevDist : 0) : f.distance;
@@ -61,6 +70,13 @@ function accumulate(f) {
 
 function ingest(f) {
   if (f.t == null) return;
+  if (f.replay) {
+    if (f.replay_loop !== replayLoop) { resetDisplay(); replayLoop = f.replay_loop; }
+    // show the run's own distance from where the phone started it
+    if ((f.status & BIT.RECORDING) && !replayRecSeen) { replayRecSeen = true; acc = null; }
+  } else if (replayLoop !== null) {                          // first live frame after a replay
+    resetDisplay(); replayLoop = null;
+  }
   const lp = pts.length ? pts[pts.length - 1] : null;
   if (lp && f.t < lp.t - 1) {                               // phone restarted: new clock
     if (activeRun) stopRun(false);
@@ -77,6 +93,7 @@ function ingest(f) {
 
   // runs follow the telemetry: update the open run, mirror phone-side RECORDING edges
   const rec = !!(f.status & BIT.RECORDING);
+  if (f.replay) { prevRec = rec; dirty = true; return; }    // replayed runs never touch the runs table
   if (activeRun) {
     if (activeRun.pending) beginRun(activeRun);
     updateRun(activeRun, sp);
@@ -300,7 +317,7 @@ function renderFrame(now) {
   if (now - lastDom < 33) return;
   lastDom = now;
   const age = last ? (now - lastPerf) / 1000 : Infinity;
-  const live = age < NO_SIGNAL_S && sseUp;
+  const live = (age < NO_SIGNAL_S || replay.active) && sseUp;   // the pause between replay loops isn't a dropout
   document.body.classList.toggle("nosignal", !live);
   if (!live) {
     const L = lastStats && lastStats.link;
@@ -313,7 +330,7 @@ function renderFrame(now) {
   }
   const rs = $("runstate");
   rs.classList.toggle("on", !!activeRun);
-  setText("runtext", activeRun ? `Tracking run ${activeRun.n}` : live ? "Standby" : "Offline");
+  setText("runtext", replay.active ? `Replaying run #${replay.n}` : activeRun ? `Tracking run ${activeRun.n}` : live ? "Standby" : "Offline");
   setText("runclock", activeRun ? `${fmtClock(activeRun.dur || 0)} · ${lenOut(activeRun.dist || 0).toFixed(2)} ${units}` : "");
   setText("zero-age", heldRun ? `· run ${heldRun.n} final (Zero for live)`
     : zeroWall ? `· zeroed ${fmtAge((Date.now() - zeroWall) / 1000)} ago` : "");
@@ -331,11 +348,11 @@ function renderFrame(now) {
   setText("vy", fmtS(f.v_y, 2)); setText("svy", fmt(2 * f.sigma_vy, 2));
   $("svx").parentElement.classList.toggle("wide", 2 * f.sigma_vx >= 0.15);
   $("svy").parentElement.classList.toggle("wide", 2 * f.sigma_vy >= 0.15);
-  const torch = (st & BIT.TORCH_ON || f.torch > 0) ? f.torch + "%" : "off";
+  const torch = f.torch == null ? (st & BIT.TORCH_ON ? "on" : "off") : (st & BIT.TORCH_ON || f.torch > 0) ? f.torch + "%" : "off";
   const aux = [`flow q ${fmt(f.flow_quality, 1)}`, `h ${f.h == null ? "–" : (f.h * 100).toFixed(1) + " cm"}`];
   if (f.gz != null) aux.push(`yaw ${fmtS(f.gz, 2)} rad/s`);
-  aux.push(`battery ${f.battery === 255 ? "?" : f.battery + "%"}`, `torch ${torch}`, `seq ${f.seq}`,
-    `v${f.version || 1} ${f.fmt === "json" ? "json" : "bin"}`);
+  aux.push(`battery ${f.battery == null || f.battery === 255 ? "?" : f.battery + "%"}`, `torch ${torch}`, `seq ${f.seq}`,
+    f.replay ? "replay" : `v${f.version || 1} ${f.fmt === "json" ? "json" : "bin"}`);
   setText("aux", aux.join("  ·  "));
   if (document.activeElement !== slider && now - sliderTouched > 3000 && +slider.value !== f.torch) {
     slider.value = f.torch; $("torch-val").textContent = f.torch + "%";
@@ -357,8 +374,26 @@ function renderFrame(now) {
   }
 }
 
+function renderReplay() {
+  const r = (lastStats && lastStats.replay) || { active: false };
+  const was = replay.active;
+  replay = r;
+  document.body.classList.toggle("replaying", !!r.active);
+  $("replaybar").hidden = !r.active;
+  $("btn-replay").textContent = r.active ? "Exit replay" : "Replay run";
+  if (r.active) {
+    const when = r.session ? r.session.replace("_", " ").replace(/-(\d\d)-(\d\d)$/, ":$1") : "";
+    setText("rp-what", `run #${r.n} · ${when} · ${r.duration.toFixed(1)} s · ${lenOut(r.distance).toFixed(2)} ${units}`);
+    setText("rp-loop", r.loop_enabled ? `loop ${r.loop || 1}` : "once");
+    $("rp-prog").style.width = `${Math.round((r.progress || 0) * 100)}%`;
+  } else if (was) {
+    resetDisplay(); replayLoop = null;                     // back to live
+  }
+}
+
 function renderStats() {
   const s = lastStats; if (!s) return;
+  renderReplay();
   const L = s.link, ph = s.phone;
   const age = L.last_seen_age;
   let cls = "";
@@ -371,8 +406,8 @@ function renderStats() {
   parts.push(ph.target_ip || "phone ?");
   setText("linktext", parts.join("  ·  "));
   const cs = $("cmd-state");
-  cs.textContent = ph.connected ? `command link ✓ ${ph.target_ip}:${ph.target_port} (${ph.target_source})`
-    : ph.target_ip ? `command link ✗ ${ph.last_error || "connecting…"}` : "command link — phone IP unknown";
+  cs.textContent = ph.connected ? `command link: connected to ${ph.target_ip}:${ph.target_port} (${ph.target_source})`
+    : ph.target_ip ? `command link: ${ph.last_error || "connecting"}` : "command link: phone IP unknown";
   cs.classList.toggle("ok", !!ph.connected);
   if (document.activeElement !== $("phone-input"))
     $("phone-input").placeholder = ph.explicit_ip ? ph.explicit_ip : "auto" + (ph.target_ip ? ` (${ph.target_ip})` : "");
@@ -731,7 +766,7 @@ function logCmd(req, rep, ms) {
   const reqx = Object.assign({}, req); delete reqx.cmd;
   li.innerHTML = `<span class="ts"></span><span class="${ok ? "ok" : "err"}"></span><span class="rep"></span>`;
   li.children[0].textContent = new Date().toLocaleTimeString([], { hour12: false });
-  li.children[1].textContent = (ok ? "✓ " : "✗ ") + req.cmd + (Object.keys(reqx).length ? " " + Object.values(reqx).join(" ") : "");
+  li.children[1].textContent = (ok ? "ok  " : "err ") + req.cmd + (Object.keys(reqx).length ? " " + Object.values(reqx).join(" ") : "");
   li.children[2].textContent = (rep && rep.error ? rep.error : Object.keys(extra).length ? JSON.stringify(extra) : "ok") + `  ${ms.toFixed(0)} ms`;
   li.title = JSON.stringify(rep);
   logEl.prepend(li);
@@ -764,6 +799,42 @@ function clientZero() {
   zeroPendingUntil = performance.now() + 5000;
   dirty = true;
 }
+// ------------------------------------------------------------------ replay controls
+async function replayStop() {
+  await fetch("/api/replay/stop", { method: "POST", body: "{}" }).catch(() => {});
+}
+async function replayStart(n) {
+  const loop = $("rd-loop").checked;
+  const r = await fetch("/api/replay/start", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ n, loop }) }).then((x) => x.json()).catch((e) => ({ ok: false, error: String(e) }));
+  if (!r.ok) { alert(`Replay failed: ${r.error}`); return; }
+  store.set("gs-replay-n", n);
+  $("replay-dlg").close();
+}
+async function openReplayPicker() {
+  const runsLogged = await fetch("/api/replay/runs").then((x) => x.json()).catch(() => []);
+  const body = $("rd-body"); body.textContent = "";
+  $("rd-empty").hidden = runsLogged.length > 0;
+  const lastN = store.get("gs-replay-n", null);
+  for (const r of runsLogged.slice().reverse()) {
+    const tr = document.createElement("tr");
+    if (r.n === lastN) tr.className = "last";
+    const d = new Date(r.start_wall * 1000);
+    const when = d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " +
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    for (const [txt, cls] of [[`#${r.n}`, ""], [when, "l"], [`${r.duration.toFixed(1)} s`, ""],
+      [`${lenOut(r.distance).toFixed(2)} ${units}`, ""], [`${r.max_speed.toFixed(2)} m/s`, ""]]) {
+      const td = document.createElement("td"); td.textContent = txt; if (cls) td.className = cls; tr.appendChild(td);
+    }
+    const td = document.createElement("td"), b = document.createElement("button");
+    b.type = "button"; b.textContent = "Loop"; b.onclick = () => replayStart(r.n);
+    td.appendChild(b); tr.appendChild(td); body.appendChild(tr);
+  }
+  $("replay-dlg").showModal();
+}
+$("btn-replay").onclick = () => (replay.active ? replayStop() : openReplayPicker());
+$("btn-replay-exit").onclick = replayStop;
+
 $("btn-zero").onclick = (e) => {
   clientZero();
   const b = e.currentTarget; b.classList.add("flash"); setTimeout(() => b.classList.remove("flash"), 250);

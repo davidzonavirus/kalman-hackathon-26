@@ -1,6 +1,6 @@
 import Foundation
 
-/// Per-run CSV files and their frozen headers (PROTOCOL.md §3).
+/// Per-run CSV files and their headers (PROTOCOL.md §3).
 public enum CSVSchema {
     public static let imuFile = "imu.csv"
     public static let flowFile = "flow.csv"
@@ -17,7 +17,7 @@ public enum CSVSchema {
     public static let estHeader = "t,v_x,v_y,sigma_vx,sigma_vy,distance,status,flow_quality,h"
     public static let eventsHeader = "t,event,value"
 
-    /// filename → header, for writers that open all files at once.
+    /// filename -> header, for writers that open all files at once.
     public static let headers: [String: String] = [
         imuFile: imuHeader, flowFile: flowHeader, gnssFile: gnssHeader,
         depthFile: depthHeader, estFile: estHeader, eventsFile: eventsHeader,
@@ -39,7 +39,7 @@ public enum CSVSchema {
 /// Number formatting for CSV rows.
 ///
 /// Convention (all writers and the Python side should match):
-/// - `t` (first column) is printed `%.6f` → microsecond resolution. Mach-clock seconds are
+/// - `t` (first column) is printed `%.6f` -> microsecond resolution. Mach-clock seconds are
 ///   ~1e5–1e6, so 6 decimals keep ≤ 16 significant digits, within Double precision.
 /// - every other real value is printed `%.9g` (≥ float32 round-trip, ~1e-9 relative for
 ///   doubles; plenty for the 1e-6 m/s replay cross-check).
@@ -183,7 +183,7 @@ public struct RunMeta: Sendable, Equatable, Codable {
         self.batteryEnd = batteryEnd; self.q = q; self.r = r
     }
 
-    /// Always writes every key (nil → `null`) so the file shape is stable for Python.
+    /// Always writes every key (nil -> `null`) so the file shape is stable for Python.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(runId, forKey: .runId)

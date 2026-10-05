@@ -1,11 +1,10 @@
-/// Name → factory for every filter variant. The app's picker, `meta.json` "filter_name"
+/// Name -> factory for every filter variant. The app's picker, `meta.json` "filter_name"
 /// and `kfreplay --filter` all go through here.
 public enum FilterRegistry {
     public static let all: [String: @Sendable () -> any GroundSpeedFilter] = [
         ReferenceKF4.name: { ReferenceKF4() },
         DecoupledKF2x2.name: { DecoupledKF2x2() },
-        // JOSEPH: add your filter here, e.g.
-        // JosephKF.name: { JosephKF() },
+        // Register new GroundSpeedFilter implementations here: MyFilter.name: { MyFilter() },
     ]
 
     /// Filter used when nothing else is selected.

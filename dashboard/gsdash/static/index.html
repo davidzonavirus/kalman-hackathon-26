@@ -19,6 +19,23 @@
   </div>
 </header>
 
+<div class="replaybar" id="replaybar" hidden>
+  <span class="rp-tag">Replay</span>
+  <span class="rp-what num" id="rp-what">run —</span>
+  <span class="rp-prog"><i id="rp-prog"></i></span>
+  <span class="rp-loop num" id="rp-loop"></span>
+  <button class="rp-exit" id="btn-replay-exit">Exit replay · back to live</button>
+</div>
+
+<dialog class="replaydlg" id="replay-dlg">
+  <form method="dialog" class="rd-head"><span class="cap">Replay a recorded run</span><span class="spacer"></span>
+    <label class="rd-loop"><input type="checkbox" id="rd-loop" checked> loop forever</label>
+    <button class="link" value="cancel">Close</button></form>
+  <div class="rd-list"><table class="num"><thead><tr><th>#</th><th class="l">recorded</th><th>dur</th><th>dist</th><th>max</th><th></th></tr></thead>
+    <tbody id="rd-body"></tbody></table><div class="empty" id="rd-empty" hidden>No recorded runs in dashboard/logs.</div></div>
+  <p class="rd-note">All runs found in every session log on this Mac (phone RECORDING segments), oldest first.</p>
+</dialog>
+
 <section class="hero fade" style="--i:1">
   <div class="h-dist">
     <div class="cap">Distance travelled <span class="hint" id="zero-age"></span></div>
@@ -71,6 +88,7 @@
     <div class="primary">
       <button class="big-btn zero" id="btn-zero" title="Zero distance and net forward, re-estimate IMU bias (keep still ~1 s)">Zero</button>
       <button class="big-btn track" id="btn-track">Start tracking</button>
+      <button class="big-btn replay" id="btn-replay" title="Loop a recorded run from the logs (judging mode)">Replay run</button>
     </div>
     <div class="minor-btns">
       <button class="tb" id="btn-mark" title="Mark (M)">Mark</button>

@@ -1,12 +1,23 @@
+# Swift / Xcode
 .build/
+.build-ios/
 .swiftpm/
-*.xcodeproj/xcuserdata/
 DerivedData/
+xcuserdata/
+
+# Python
 __pycache__/
 *.pyc
+
+# Local data (session logs and device pulls; the curated archive lives in data/)
 dashboard/logs/
-.DS_Store
-.build-ios/
 device_data/
-hardware/_refs/
-hardware/spice/_t/
+
+# Altium per-user / generated files
+hardware/**/History/
+hardware/**/Project Logs for */
+hardware/**/*.LOG
+hardware/**/__Previews/
+
+# macOS
+.DS_Store
